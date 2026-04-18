@@ -1,6 +1,7 @@
 import {App, Modal, Notice, Plugin} from 'obsidian';
 import {DEFAULT_SETTINGS, MyPluginSettings} from "./settings";
 import { getCurrentEditorContents } from 'libs/obsidian';
+import { astToMarkdown, convertToClozeAST, markdownToAst } from 'libs/parse-markdown';
 
 // Remember to rename these classes and interfaces!
 
@@ -16,7 +17,11 @@ export default class MyPlugin extends Plugin {
 		});
 		// scan current
 		this.addRibbonIcon('star', 'Scan Current', async (_evt: MouseEvent) => {
-			return new Notice(getCurrentEditorContents(this.app) ?? '');
+			const md = getCurrentEditorContents(this.app) ?? ''
+			const ast = markdownToAst(md)
+			const transformedAst = convertToClozeAST(ast)
+			const result = astToMarkdown(transformedAst)
+			return new Notice(result);
 		});
 
 		// // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
