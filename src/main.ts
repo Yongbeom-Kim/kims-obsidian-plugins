@@ -1,5 +1,6 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import {App, Modal, Notice, Plugin} from 'obsidian';
+import {DEFAULT_SETTINGS, MyPluginSettings} from "./settings";
+import { getCurrentEditorContents } from 'libs/obsidian';
 
 // Remember to rename these classes and interfaces!
 
@@ -9,8 +10,13 @@ export default class MyPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
+		// scan all
 		this.addRibbonIcon('square-star', 'Sample', (evt: MouseEvent) => {
 			new Notice('This is a notice!');
+		});
+		// scan current
+		this.addRibbonIcon('star', 'Scan Current', async (_evt: MouseEvent) => {
+			return new Notice(getCurrentEditorContents(this.app) ?? '');
 		});
 
 		// // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
