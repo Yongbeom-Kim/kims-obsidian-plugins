@@ -7,9 +7,13 @@ import { visit } from "unist-util-visit";
 import type { Node as UnistNode } from "unist";
 import { remarkParseObsidianLink } from "./remark-obsidian-link";
 
-export const transformMarkdownToCloze = (markdown: string): string => {
+export type ClozeTransformOptions = {
+  includePromptCloze?: boolean
+}
+
+export const transformMarkdownToCloze = (markdown: string, options: ClozeTransformOptions = {}): string => {
     const ast = markdownToAst(markdown)
-    const transformedAst = convertToClozeAST(ast)
+    const transformedAst = convertToClozeAST(ast, options)
     return astToMarkdown(transformedAst)
 }
 
@@ -19,9 +23,9 @@ const markdownToAst = (markdown: string) => unified()
   .use(remarkParseObsidianLink)
   .parse(markdown) as Root
 
-const convertToClozeAST = (ast: Root): Root => {
+const convertToClozeAST = (ast: Root, options: ClozeTransformOptions): Root => {
   const astCopy = JSON.parse(JSON.stringify(ast)) // TODO: dangerous
-  const visitor = new MarkdownAstToClozeTransfomer()
+  const visitor = new MarkdownAstToClozeTransfomer(options)
   visit(astCopy, visitor.visit)
   return astCopy
 }
@@ -61,6 +65,11 @@ type ListItemNode = UnistNode & { type: 'listItem' }
 
 class MarkdownAstToClozeTransfomer {
   private clozeIndex = 0
+  private readonly includePromptCloze: boolean
+
+  constructor(options: ClozeTransformOptions = {}) {
+    this.includePromptCloze = options.includePromptCloze ?? false
+  }
 
   visit = (node: UnistNode, _index?: number, parent?: UnistNode) => {
     if (node.type === 'paragraph') {
@@ -83,15 +92,23 @@ class MarkdownAstToClozeTransfomer {
     }
 
     this.clozeIndex += 1
-    paragraph.children = [
-      this.createTextNode(`{{c${this.clozeIndex}:::: `),
-      ...split.before,
-      this.createTextNode(` }}`),
-      this.createTextNode(` ${split.separator} `),
-      this.createTextNode(`{{c${this.clozeIndex}:: `),
-      ...split.after,
-      this.createTextNode(` }}`),
-    ]
+    paragraph.children = this.includePromptCloze
+      ? [
+        this.createTextNode(`{{c${this.clozeIndex}:::: `),
+        ...split.before,
+        this.createTextNode(` }}`),
+        this.createTextNode(` ${split.separator} `),
+        this.createTextNode(`{{c${this.clozeIndex}:: `),
+        ...split.after,
+        this.createTextNode(` }}`),
+      ]
+      : [
+        ...split.before,
+        this.createTextNode(` ${split.separator} `),
+        this.createTextNode(`{{c${this.clozeIndex}:: `),
+        ...split.after,
+        this.createTextNode(` }}`),
+      ]
   }
 
 /**

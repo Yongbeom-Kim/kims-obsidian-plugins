@@ -14,8 +14,8 @@ test('Paragraph cloze transform with dash', () => {
 
     const expected = `
 # HEADER
-- {{c1:::: 1 $math$ }} - {{c1:: hello $math$ }}
-1. {{c2:::: 2 \`code\` }} - {{c2:: hi \`code\` }}
+- 1 $math$ - {{c1:: hello $math$ }}
+1. 2 \`code\` - {{c2:: hi \`code\` }}
 2. But math $x - y$ does not transform
 3. Code \`x - y\` does not transform as well
 
@@ -38,8 +38,8 @@ test('Paragraph cloze transform with equals', () => {
 
     const expected = `
 # HEADER
-- {{c1:::: 1 $math$ }} = {{c1:: hello $math$ }}
-1. {{c2:::: 2 \`code\` }} = {{c2:: hi \`code\` }}
+- 1 $math$ = {{c1:: hello $math$ }}
+1. 2 \`code\` = {{c2:: hi \`code\` }}
 2. But math $x = y$ does not transform
 3. Code \`x = y\` does not transform as well
 
@@ -57,9 +57,22 @@ test('Obsidian wikilinks are preserved as dedicated nodes and do not become cloz
 
     const expected = `
 - [[xyz - 123]]
-- {{c1:::: [[xyz - 123]] }} - {{c1:: hello }}
+- [[xyz - 123]] - {{c1:: hello }}
 `.trim()
 
     const result = transformMarkdownToCloze(input)
+    expect(result).toBe(expected);
+});
+
+test('Prompt cloze can be enabled explicitly', () => {
+    const input = `
+- [[xyz - 123]] - hello
+`.trim()
+
+    const expected = `
+- {{c1:::: [[xyz - 123]] }} - {{c1:: hello }}
+`.trim()
+
+    const result = transformMarkdownToCloze(input, { includePromptCloze: true })
     expect(result).toBe(expected);
 });

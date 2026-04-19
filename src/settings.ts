@@ -3,10 +3,12 @@ import KimsAnkiPlugin from "./main";
 
 export interface KimsAnkiPluginSettings {
 	syncDirectory: string;
+	includePromptCloze: boolean;
 }
 
 export const DEFAULT_SETTINGS: KimsAnkiPluginSettings = {
-	syncDirectory: ''
+	syncDirectory: '',
+	includePromptCloze: false,
 }
 
 export class KimsAnkiPluginSettingTab extends PluginSettingTab {
@@ -30,6 +32,16 @@ export class KimsAnkiPluginSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.syncDirectory)
 				.onChange(async (value) => {
 					this.plugin.settings.syncDirectory = value.trim();
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Include prompt cloze')
+			.setDesc('Wrap the text before the separator in a cloze prompt template. Disabled by default.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.includePromptCloze)
+				.onChange(async (value) => {
+					this.plugin.settings.includePromptCloze = value;
 					await this.plugin.saveSettings();
 				}));
 	}
