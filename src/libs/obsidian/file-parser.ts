@@ -4,6 +4,22 @@ const USER_NOTE_END_DELIMITER = '%% ANKI_NOTE_END %%'
 const GENERATED_NOTE_START_DELIMITER = '%% ANKI_GENERATED_NOTE_BEGIN %%'
 const GENERATED_NOTE_END_DELIMITER = '%% ANKI_GENERATED_NOTE_END %%'
 
+const hasDelimitedSection = (content: string, startDelimiter: string, endDelimiter: string): boolean => {
+  const startIdx = content.indexOf(startDelimiter)
+  if (startIdx === -1) return false
+
+  const endIdx = content.indexOf(endDelimiter, startIdx + startDelimiter.length)
+  return endIdx !== -1
+}
+
+export const hasUserNoteDelimiters = (content: string): boolean => {
+  return hasDelimitedSection(content, USER_NOTE_START_DELIMITER, USER_NOTE_END_DELIMITER)
+}
+
+export const hasGeneratedNoteDelimiters = (content: string): boolean => {
+  return hasDelimitedSection(content, GENERATED_NOTE_START_DELIMITER, GENERATED_NOTE_END_DELIMITER)
+}
+
 export const getUserNoteBetweenDelimiters = (content: string): string => {
   const startIdx = content.indexOf(USER_NOTE_START_DELIMITER)
   if (startIdx === -1) return ''
@@ -40,4 +56,8 @@ export const parseAnkiNoteId = (content: string): string | undefined => {
 
 export const generateAnkiNoteIdMarker = (noteId: string): string => {
   return `<!-- Anki Note Id: ${noteId} -->`
+}
+
+export const hasGeneratedCloze = (content: string): boolean => {
+  return /\{\{c\d+::/.test(content)
 }

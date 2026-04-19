@@ -1,8 +1,8 @@
-import {App, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, KimsAnkiPluginSettings} from "./settings";
+import { App, Modal, Notice, Plugin } from 'obsidian';
+import { DEFAULT_SETTINGS, KimsAnkiPluginSettings } from "./settings";
 import { getCurrentEditorContents, setCurrentEditorContents } from 'libs/obsidian/editor';
 import { transformMarkdownToCloze } from 'libs/md-transform/cloze-transform';
-import { generateAnkiNoteIdMarker, getUserNoteBetweenDelimiters, parseAnkiCardType, parseAnkiNoteId, parseAnkiTargetDeck, regenerateGeneratedNoteSection } from 'libs/obsidian/file-parser';
+import { generateAnkiNoteIdMarker, getUserNoteBetweenDelimiters, hasGeneratedCloze, hasGeneratedNoteDelimiters, hasUserNoteDelimiters, parseAnkiCardType, parseAnkiNoteId, parseAnkiTargetDeck, regenerateGeneratedNoteSection } from 'libs/obsidian/file-parser';
 import { upsertNote } from 'libs/anki';
 import { markdownToHtml } from 'libs/md-transform/html-transform';
 
@@ -13,19 +13,28 @@ export default class KimsAnkiPlugin extends Plugin {
 		await this.loadSettings();
 
 		// scan all
-		this.addRibbonIcon('square-star', "Kim's Anki Plugin", (_evt: MouseEvent) => {
+		this.addRibbonIcon('square-star', "Sync All Notes With Anki", (_evt: MouseEvent) => {
 			new Notice('This is a notice!');
 		});
 		// scan current
-		this.addRibbonIcon('star', 'Scan Current', async (_evt: MouseEvent) => {
+		this.addRibbonIcon('star', 'Sync Current Note With Anki', async (_evt: MouseEvent) => {
 			const md = getCurrentEditorContents(this.app) ?? ''
+
+			if (!hasUserNoteDelimiters(md) || !hasGeneratedNoteDelimiters(md)) {
+				return new Notice('Missing user note or generated note delimiters');
+			}
+
 			const userNote = getUserNoteBetweenDelimiters(md);
 			const result = transformMarkdownToCloze(userNote);
+
+			if (!hasGeneratedCloze(result)) {
+				return new Notice('No cloze deletions were generated; skipping Anki sync');
+			}
 
 			const ankiTargetDeck = parseAnkiTargetDeck(md)
 			const ankiCardtype = parseAnkiCardType(md)
 			const ankiNoteId = parseAnkiNoteId(md)
-			
+
 			if (!ankiCardtype || !ankiTargetDeck) {
 				return new Notice('Missing Anki target deck or card type');
 			}
@@ -43,7 +52,7 @@ export default class KimsAnkiPlugin extends Plugin {
 			setCurrentEditorContents(this.app, regenerateGeneratedNoteSection(md, generateAnkiNoteIdMarker(resultId) + '\n' + result))
 
 			return new Notice(`Anki note generated with id ${resultId}`)
-			
+
 		});
 
 		// // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
@@ -119,12 +128,12 @@ class KimsAnkiPluginModal extends Modal {
 	}
 
 	onOpen() {
-		let {contentEl} = this;
+		let { contentEl } = this;
 		contentEl.setText('Woah!');
 	}
 
 	onClose() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.empty();
 	}
 }
