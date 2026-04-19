@@ -28,8 +28,11 @@
 	"dependencies": {
 		"axios": "^1.15.0",
 		"obsidian": "latest",
+		"rehype-katex": "^7.0.1",
+		"rehype-stringify": "^10.0.1",
 		"remark-math": "^6.0.0",
 		"remark-parse": "^11.0.0",
+		"remark-rehype": "^11.1.2",
 		"remark-stringify": "^11.0.0",
 		"unified": "^11.0.5",
 		"unist-util-visit": "^5.1.0",

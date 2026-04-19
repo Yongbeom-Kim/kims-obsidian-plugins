@@ -6,19 +6,25 @@ import { unified } from "unified";
 import { visit } from "unist-util-visit";
 import type { Node as UnistNode } from "unist";
 
-export const markdownToAst = (markdown: string) => unified()
+export const transformMarkdownToCloze = (markdown: string): string => {
+    const ast = markdownToAst(markdown)
+    const transformedAst = convertToClozeAST(ast)
+    return astToMarkdown(transformedAst)
+}
+
+const markdownToAst = (markdown: string) => unified()
   .use(remarkParse)
   .use(remarkMath)
   .parse(markdown)
 
-export const convertToClozeAST = (ast: Root): Root => {
+const convertToClozeAST = (ast: Root): Root => {
   const astCopy = JSON.parse(JSON.stringify(ast)) // TODO: dangerous
   const visitor = new MarkdownAstToClozeTransfomer()
   visit(astCopy, visitor.visit)
   return astCopy
 }
 
-export const astToMarkdown = (tree: Root): string =>
+const astToMarkdown = (tree: Root): string =>
   unified()
     .use(remarkStringify, {
       // Keep unordered list output stable for tests and plugin output.

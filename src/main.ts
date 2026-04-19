@@ -1,7 +1,10 @@
 import {App, Modal, Notice, Plugin} from 'obsidian';
 import {DEFAULT_SETTINGS, MyPluginSettings} from "./settings";
-import { getCurrentEditorContents } from 'libs/obsidian';
-import { astToMarkdown, convertToClozeAST, markdownToAst } from 'libs/parse-markdown';
+import { getCurrentEditorContents, setCurrentEditorContents } from 'libs/obsidian/editor';
+import { transformMarkdownToCloze } from 'libs/md-transform/cloze-transform';
+import { getUserNoteBetweenDelimiters, parseAnkiCardType, parseAnkiNoteId, parseAnkiTargetDeck, regenerateGeneratedNoteSection } from 'libs/obsidian/file-parser';
+import { upsertNote } from 'libs/anki';
+import { markdownToHtml } from 'libs/md-transform/html-transform';
 
 // Remember to rename these classes and interfaces!
 
@@ -18,10 +21,30 @@ export default class MyPlugin extends Plugin {
 		// scan current
 		this.addRibbonIcon('star', 'Scan Current', async (_evt: MouseEvent) => {
 			const md = getCurrentEditorContents(this.app) ?? ''
-			const ast = markdownToAst(md)
-			const transformedAst = convertToClozeAST(ast)
-			const result = astToMarkdown(transformedAst)
-			return new Notice(result);
+			const userNote = getUserNoteBetweenDelimiters(md);
+			const result = transformMarkdownToCloze(userNote);
+			setCurrentEditorContents(this.app, regenerateGeneratedNoteSection(md, result))
+
+			const ankiTargetDeck = parseAnkiTargetDeck(md)
+			const ankiCardtype = parseAnkiCardType(md)
+			const ankiNoteId = parseAnkiNoteId(md)
+			
+			if (!ankiCardtype || !ankiTargetDeck) {
+				return new Notice('Missing Anki target deck or card type');
+			}
+
+			const resultId = await upsertNote({
+				fields: {
+					text: await markdownToHtml(result)
+				},
+				id: ankiNoteId,
+				deckName: ankiTargetDeck,
+				cardType: ankiCardtype,
+				tags: ['from-obsidian']
+			})
+
+			return new Notice(`Anki note generated with id ${resultId}`)
+			
 		});
 
 		// // This adds a status bar item to the bottom of the app. Does not work on mobile apps.

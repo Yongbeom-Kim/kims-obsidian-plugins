@@ -1,4 +1,4 @@
-import { astToMarkdown, convertToClozeAST, markdownToAst } from "../parse-markdown";
+import { transformMarkdownToCloze } from "../md-transform/cloze-transform";
 import { expect, test } from "vitest";
 
 test('Comment example applies cloze deletions around dash delimiters', () => {
@@ -40,6 +40,6 @@ test('Comment example applies cloze deletions around dash delimiters', () => {
 - {{c6:::: Count characters }} - {{c6:: \`-m\`x }}
 `.trim()
 
-    const result = astToMarkdown(convertToClozeAST(markdownToAst(input)))
+    const result = transformMarkdownToCloze(input)
     expect(result).toBe(expected);
 });

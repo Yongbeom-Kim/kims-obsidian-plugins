@@ -42,7 +42,7 @@ const moveNoteToDeckIfNeeded = async (noteId: string, deckName: string): Promise
 	}
 };
 
-export const upsertNote = async (info: UpsertNoteInput): Promise<void> => {
+export const upsertNote = async (info: UpsertNoteInput): Promise<string> => {
 	const existingNote = info.id ? await getNote(info.id) : undefined;
 
 	if (!info.id || !existingNote) {
@@ -58,7 +58,8 @@ export const upsertNote = async (info: UpsertNoteInput): Promise<void> => {
 		if (noteId === null) {
 			throw new Error('AnkiConnect failed to create the note.');
 		}
-		return;
+
+		return String(noteId);
 	}
 
 	if (existingNote.modelName && existingNote.modelName !== info.cardType) {
@@ -73,4 +74,6 @@ export const upsertNote = async (info: UpsertNoteInput): Promise<void> => {
 		fields: info.fields,
 		tags: info.tags,
 	});
+
+	return info.id;
 };

@@ -1,4 +1,4 @@
-import { astToMarkdown, convertToClozeAST, markdownToAst } from "../parse-markdown";
+import { transformMarkdownToCloze } from "../md-transform/cloze-transform";
 import { expect, test } from "vitest";
 
 test('Paragraph cloze transform with dash', () => {
@@ -21,7 +21,7 @@ test('Paragraph cloze transform with dash', () => {
 
 3 - hello
 `.trim()
-    const result = astToMarkdown(convertToClozeAST(markdownToAst(input)))
+    const result = transformMarkdownToCloze(input)
     expect(result).toBe(expected);
 });
 
@@ -45,6 +45,6 @@ test('Paragraph cloze transform with equals', () => {
 
 3 = hello
 `.trim()
-    const result = astToMarkdown(convertToClozeAST(markdownToAst(input)))
+    const result = transformMarkdownToCloze(input)
     expect(result).toBe(expected);
 });
