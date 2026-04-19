@@ -21,7 +21,7 @@ test('Comment example applies cloze deletions around dash delimiters', () => {
 `.trim()
 
     const expected = `
-# \\[\\[Bash - Get Word, Byte, Line Count]]
+# [[Bash - Get Word, Byte, Line Count]]
 
 ## Overview\\[^1]
 - {{c1:::: Get line, word, byte count in file }} - {{c1:: \`wc file\` }}

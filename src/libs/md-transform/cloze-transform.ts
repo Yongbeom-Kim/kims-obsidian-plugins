@@ -5,6 +5,7 @@ import remarkStringify from "remark-stringify";
 import { unified } from "unified";
 import { visit } from "unist-util-visit";
 import type { Node as UnistNode } from "unist";
+import { remarkParseObsidianLink } from "./remark-obsidian-link";
 
 export const transformMarkdownToCloze = (markdown: string): string => {
     const ast = markdownToAst(markdown)
@@ -15,7 +16,8 @@ export const transformMarkdownToCloze = (markdown: string): string => {
 const markdownToAst = (markdown: string) => unified()
   .use(remarkParse)
   .use(remarkMath)
-  .parse(markdown)
+  .use(remarkParseObsidianLink)
+  .parse(markdown) as Root
 
 const convertToClozeAST = (ast: Root): Root => {
   const astCopy = JSON.parse(JSON.stringify(ast)) // TODO: dangerous
@@ -26,6 +28,7 @@ const convertToClozeAST = (ast: Root): Root => {
 
 const astToMarkdown = (tree: Root): string =>
   unified()
+    .use(remarkParseObsidianLink)
     .use(remarkStringify, {
       // Keep unordered list output stable for tests and plugin output.
       bullet: '-',

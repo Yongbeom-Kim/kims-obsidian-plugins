@@ -48,3 +48,18 @@ test('Paragraph cloze transform with equals', () => {
     const result = transformMarkdownToCloze(input)
     expect(result).toBe(expected);
 });
+
+test('Obsidian wikilinks are preserved as dedicated nodes and do not become cloze deletions', () => {
+    const input = `
+- [[xyz - 123]]
+- [[xyz - 123]] - hello
+`.trim()
+
+    const expected = `
+- [[xyz - 123]]
+- {{c1:::: [[xyz - 123]] }} - {{c1:: hello }}
+`.trim()
+
+    const result = transformMarkdownToCloze(input)
+    expect(result).toBe(expected);
+});
