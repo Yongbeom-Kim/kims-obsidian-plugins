@@ -29,7 +29,7 @@ type BulkSyncResult = {
 	failedFiles: string[];
 };
 
-const syncMarkdownNoteWithAnki = async (markdown: string): Promise<SyncMarkdownNoteResult> => {
+const syncMarkdownNoteWithAnki = async (markdown: string, vaultName: string): Promise<SyncMarkdownNoteResult> => {
 	if (!hasUserNoteDelimiters(markdown) || !hasGeneratedNoteDelimiters(markdown)) {
 		throw new NoteSyncError('Missing user note or generated note delimiters');
 	}
@@ -51,7 +51,7 @@ const syncMarkdownNoteWithAnki = async (markdown: string): Promise<SyncMarkdownN
 
 	const noteId = await upsertNote({
 		fields: {
-			text: await markdownToHtml(transformedNote),
+			text: await markdownToHtml(transformedNote, vaultName),
 		},
 		id: ankiNoteId,
 		deckName: ankiTargetDeck,
@@ -91,7 +91,7 @@ export default class KimsAnkiPlugin extends Plugin {
 		const markdown = await this.app.vault.read(file);
 
 		try {
-			const result = await syncMarkdownNoteWithAnki(markdown);
+			const result = await syncMarkdownNoteWithAnki(markdown, this.app.vault.getName());
 			await this.app.vault.modify(file, result.updatedMarkdown);
 			return 'synced';
 		} catch (error) {
@@ -159,7 +159,7 @@ export default class KimsAnkiPlugin extends Plugin {
 			const md = getCurrentEditorContents(this.app) ?? ''
 
 			try {
-				const result = await syncMarkdownNoteWithAnki(md);
+				const result = await syncMarkdownNoteWithAnki(md, this.app.vault.getName());
 				setCurrentEditorContents(this.app, result.updatedMarkdown)
 				return new Notice(`Anki note generated with id ${result.noteId}`)
 			} catch (error) {
