@@ -2,7 +2,7 @@ import {App, Modal, Notice, Plugin} from 'obsidian';
 import {DEFAULT_SETTINGS, MyPluginSettings} from "./settings";
 import { getCurrentEditorContents, setCurrentEditorContents } from 'libs/obsidian/editor';
 import { transformMarkdownToCloze } from 'libs/md-transform/cloze-transform';
-import { getUserNoteBetweenDelimiters, parseAnkiCardType, parseAnkiNoteId, parseAnkiTargetDeck, regenerateGeneratedNoteSection } from 'libs/obsidian/file-parser';
+import { generateAnkiNoteIdMarker, getUserNoteBetweenDelimiters, parseAnkiCardType, parseAnkiNoteId, parseAnkiTargetDeck, regenerateGeneratedNoteSection } from 'libs/obsidian/file-parser';
 import { upsertNote } from 'libs/anki';
 import { markdownToHtml } from 'libs/md-transform/html-transform';
 
@@ -23,7 +23,6 @@ export default class MyPlugin extends Plugin {
 			const md = getCurrentEditorContents(this.app) ?? ''
 			const userNote = getUserNoteBetweenDelimiters(md);
 			const result = transformMarkdownToCloze(userNote);
-			setCurrentEditorContents(this.app, regenerateGeneratedNoteSection(md, result))
 
 			const ankiTargetDeck = parseAnkiTargetDeck(md)
 			const ankiCardtype = parseAnkiCardType(md)
@@ -42,6 +41,8 @@ export default class MyPlugin extends Plugin {
 				cardType: ankiCardtype,
 				tags: ['from-obsidian']
 			})
+
+			setCurrentEditorContents(this.app, regenerateGeneratedNoteSection(md, generateAnkiNoteIdMarker(resultId) + '\n' + result))
 
 			return new Notice(`Anki note generated with id ${resultId}`)
 			

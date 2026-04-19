@@ -34,10 +34,10 @@ export const parseAnkiCardType = (content: string): string | undefined => {
 }
 
 export const parseAnkiNoteId = (content: string): string | undefined => {
-  const match = content.match(/^Anki Note Id:\s*(.+)$/m)
+  const match = content.match(/<!-- Anki Note Id:\s*(.+?)\s*-->/)
   return match?.[1]?.trim?.()
 }
 
 export const generateAnkiNoteIdMarker = (noteId: string): string => {
-  return `Anki Note Id: ${noteId}`
+  return `<!-- Anki Note Id: ${noteId} -->`
 }

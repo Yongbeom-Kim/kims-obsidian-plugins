@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { error } from 'console';
 
 const ANKI_CONNECT_URL = 'http://127.0.0.1:8765';
 const ANKI_CONNECT_VERSION = 6;
@@ -229,19 +230,25 @@ export async function getDeckNames(): Promise<string[]> {
 export async function getNote(noteId: string): Promise<NoteInfo | undefined> {
 	const parsedNoteId = parseAnkiNoteId(noteId);
 
-	const notes = await ankiClient.invoke<NoteInfo[], {notes: number[]}>('notesInfo', {
+	const notes = await ankiClient.invoke<NoteInfo[], { notes: number[] }>('notesInfo', {
 		notes: [parsedNoteId],
 	});
+
+	// special check because Anki API is special like that
+	// API returns {}
+	if (Object.keys(notes[0] ?? {}).length == 0) {
+		return undefined
+	}
 
 	return notes[0];
 }
 
 export async function addNote(note: AddNoteInput): Promise<number | null> {
-	return ankiClient.invoke<number | null, {note: AddNoteInput}>('addNote', {note});
+	return ankiClient.invoke<number | null, { note: AddNoteInput }>('addNote', { note });
 }
 
 export async function updateNote(note: UpdateNoteInput): Promise<void> {
-	await ankiClient.invoke<null, {note: UpdateNoteInput}>('updateNote', {note});
+	await ankiClient.invoke<null, { note: UpdateNoteInput }>('updateNote', { note });
 }
 
 export async function setNoteField(noteId: string, fields: Record<string, string>): Promise<void> {
@@ -258,19 +265,19 @@ export async function deckExists(deckName: string): Promise<boolean> {
 }
 
 export async function addDeck(deckName: string): Promise<number> {
-	return ankiClient.invoke<number, {deck: string}>('createDeck', {
+	return ankiClient.invoke<number, { deck: string }>('createDeck', {
 		deck: deckName,
 	});
 }
 
 export async function getDecks(cards: number[]): Promise<Record<string, number[]>> {
-	return ankiClient.invoke<Record<string, number[]>, {cards: number[]}>('getDecks', {
+	return ankiClient.invoke<Record<string, number[]>, { cards: number[] }>('getDecks', {
 		cards,
 	});
 }
 
 export async function changeDeck(cards: number[], deckName: string): Promise<void> {
-	await ankiClient.invoke<null, {cards: number[]; deck: string}>('changeDeck', {
+	await ankiClient.invoke<null, { cards: number[]; deck: string }>('changeDeck', {
 		cards,
 		deck: deckName,
 	});
