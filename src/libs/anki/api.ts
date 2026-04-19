@@ -63,6 +63,13 @@ interface UpdateNoteInput {
 	picture?: NoteMedia[];
 }
 
+interface UpdateNoteModelInput {
+	id: number;
+	modelName: string;
+	fields: Record<string, string>;
+	tags?: string[];
+}
+
 export interface NoteInfo {
 	noteId: number;
 	profile?: string;
@@ -249,6 +256,10 @@ export async function addNote(note: AddNoteInput): Promise<number | null> {
 
 export async function updateNote(note: UpdateNoteInput): Promise<void> {
 	await ankiClient.invoke<null, { note: UpdateNoteInput }>('updateNote', { note });
+}
+
+export async function updateNoteModel(note: UpdateNoteModelInput): Promise<void> {
+	await ankiClient.invoke<null, { note: UpdateNoteModelInput }>('updateNoteModel', { note });
 }
 
 export async function setNoteField(noteId: string, fields: Record<string, string>): Promise<void> {

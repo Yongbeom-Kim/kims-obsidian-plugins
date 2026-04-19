@@ -6,7 +6,7 @@ import {
 	getDecks,
 	getNote,
 	parseAnkiNoteId,
-	updateNote,
+	updateNoteModel,
 } from './api';
 
 export type UpsertNoteInput = {
@@ -62,15 +62,10 @@ export const upsertNote = async (info: UpsertNoteInput): Promise<string> => {
 		return String(noteId);
 	}
 
-	if (existingNote.modelName && existingNote.modelName !== info.cardType) {
-		throw new Error(
-			`Changing note type is not implemented via AnkiConnect wrapper: ${existingNote.modelName} -> ${info.cardType}`,
-		);
-	}
-
 	await moveNoteToDeckIfNeeded(info.id, info.deckName);
-	await updateNote({
+	await updateNoteModel({
 		id: parseAnkiNoteId(info.id),
+		modelName: info.cardType,
 		fields: info.fields,
 		tags: info.tags,
 	});
