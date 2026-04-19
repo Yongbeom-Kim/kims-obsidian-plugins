@@ -1,21 +1,19 @@
 import {App, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings} from "./settings";
+import {DEFAULT_SETTINGS, KimsAnkiPluginSettings} from "./settings";
 import { getCurrentEditorContents, setCurrentEditorContents } from 'libs/obsidian/editor';
 import { transformMarkdownToCloze } from 'libs/md-transform/cloze-transform';
 import { generateAnkiNoteIdMarker, getUserNoteBetweenDelimiters, parseAnkiCardType, parseAnkiNoteId, parseAnkiTargetDeck, regenerateGeneratedNoteSection } from 'libs/obsidian/file-parser';
 import { upsertNote } from 'libs/anki';
 import { markdownToHtml } from 'libs/md-transform/html-transform';
 
-// Remember to rename these classes and interfaces!
-
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class KimsAnkiPlugin extends Plugin {
+	settings: KimsAnkiPluginSettings;
 
 	async onload() {
 		await this.loadSettings();
 
 		// scan all
-		this.addRibbonIcon('square-star', 'Sample', (evt: MouseEvent) => {
+		this.addRibbonIcon('square-star', "Kim's Anki Plugin", (_evt: MouseEvent) => {
 			new Notice('This is a notice!');
 		});
 		// scan current
@@ -57,7 +55,7 @@ export default class MyPlugin extends Plugin {
 		// 	id: 'open-modal-simple',
 		// 	name: 'Open modal (simple)',
 		// 	callback: () => {
-		// 		new SampleModal(this.app).open();
+		// 		new KimsAnkiPluginModal(this.app).open();
 		// 	}
 		// });
 		// // This adds an editor command that can perform some operation on the current editor instance
@@ -65,7 +63,7 @@ export default class MyPlugin extends Plugin {
 		// 	id: 'replace-selected',
 		// 	name: 'Replace selected content',
 		// 	editorCallback: (editor: Editor, view: MarkdownView) => {
-		// 		editor.replaceSelection('Sample editor command');
+		// 		editor.replaceSelection("Kim's Anki Plugin editor command");
 		// 	}
 		// });
 		// // This adds a complex command that can check whether the current state of the app allows execution of the command
@@ -79,7 +77,7 @@ export default class MyPlugin extends Plugin {
 		// 			// If checking is true, we're simply "checking" if the command can be run.
 		// 			// If checking is false, then we want to actually perform the operation.
 		// 			if (!checking) {
-		// 				new SampleModal(this.app).open();
+		// 				new KimsAnkiPluginModal(this.app).open();
 		// 			}
 
 		// 			// This command will only show up in Command Palette when the check function returns true
@@ -90,7 +88,7 @@ export default class MyPlugin extends Plugin {
 		// });
 
 		// // This adds a settings tab so the user can configure various aspects of the plugin
-		// this.addSettingTab(new SampleSettingTab(this.app, this));
+		// this.addSettingTab(new KimsAnkiPluginSettingTab(this.app, this));
 
 		// // If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
 		// // Using this function will automatically remove the event listener when this plugin is disabled.
@@ -107,7 +105,7 @@ export default class MyPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<KimsAnkiPluginSettings>);
 	}
 
 	async saveSettings() {
@@ -115,7 +113,7 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
-class SampleModal extends Modal {
+class KimsAnkiPluginModal extends Modal {
 	constructor(app: App) {
 		super(app);
 	}
