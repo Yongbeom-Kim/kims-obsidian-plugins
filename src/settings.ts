@@ -2,11 +2,11 @@ import {App, PluginSettingTab, Setting} from "obsidian";
 import KimsAnkiPlugin from "./main";
 
 export interface KimsAnkiPluginSettings {
-	mySetting: string;
+	syncDirectory: string;
 }
 
 export const DEFAULT_SETTINGS: KimsAnkiPluginSettings = {
-	mySetting: 'default'
+	syncDirectory: ''
 }
 
 export class KimsAnkiPluginSettingTab extends PluginSettingTab {
@@ -23,13 +23,13 @@ export class KimsAnkiPluginSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Settings #1')
-			.setDesc('It\'s a secret')
+			.setName('Sync directory')
+			.setDesc('Only notes under this vault subdirectory will be included in bulk sync.')
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+				.setPlaceholder('anki-notes')
+				.setValue(this.plugin.settings.syncDirectory)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.syncDirectory = value.trim();
 					await this.plugin.saveSettings();
 				}));
 	}

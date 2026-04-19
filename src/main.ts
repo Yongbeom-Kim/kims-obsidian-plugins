@@ -1,57 +1,174 @@
-import { App, Modal, Notice, Plugin } from 'obsidian';
-import { DEFAULT_SETTINGS, KimsAnkiPluginSettings } from "./settings";
+import { App, Modal, Notice, Plugin, TFile, normalizePath } from 'obsidian';
+import { DEFAULT_SETTINGS, KimsAnkiPluginSettingTab, KimsAnkiPluginSettings } from "./settings";
 import { getCurrentEditorContents, setCurrentEditorContents } from 'libs/obsidian/editor';
-import { transformMarkdownToCloze } from 'libs/md-transform/cloze-transform';
-import { generateAnkiNoteIdMarker, getUserNoteBetweenDelimiters, hasGeneratedCloze, hasGeneratedNoteDelimiters, hasUserNoteDelimiters, parseAnkiCardType, parseAnkiNoteId, parseAnkiTargetDeck, regenerateGeneratedNoteSection } from 'libs/obsidian/file-parser';
 import { upsertNote } from 'libs/anki';
 import { markdownToHtml } from 'libs/md-transform/html-transform';
+import { transformMarkdownToCloze } from 'libs/md-transform/cloze-transform';
+import {
+	generateAnkiNoteIdMarker,
+	getUserNoteBetweenDelimiters,
+	hasGeneratedCloze,
+	hasGeneratedNoteDelimiters,
+	hasUserNoteDelimiters,
+	parseAnkiCardType,
+	parseAnkiNoteId,
+	parseAnkiTargetDeck,
+	regenerateGeneratedNoteSection,
+} from 'libs/obsidian/file-parser';
+
+class NoteSyncError extends Error {}
+
+type SyncMarkdownNoteResult = {
+	updatedMarkdown: string;
+	noteId: string;
+};
+
+type BulkSyncResult = {
+	syncedCount: number;
+	skippedCount: number;
+	failedFiles: string[];
+};
+
+const syncMarkdownNoteWithAnki = async (markdown: string): Promise<SyncMarkdownNoteResult> => {
+	if (!hasUserNoteDelimiters(markdown) || !hasGeneratedNoteDelimiters(markdown)) {
+		throw new NoteSyncError('Missing user note or generated note delimiters');
+	}
+
+	const userNote = getUserNoteBetweenDelimiters(markdown);
+	const transformedNote = transformMarkdownToCloze(userNote);
+
+	if (!hasGeneratedCloze(transformedNote)) {
+		throw new NoteSyncError('No cloze deletions were generated; skipping Anki sync');
+	}
+
+	const ankiTargetDeck = parseAnkiTargetDeck(markdown);
+	const ankiCardType = parseAnkiCardType(markdown);
+	const ankiNoteId = parseAnkiNoteId(markdown);
+
+	if (!ankiCardType || !ankiTargetDeck) {
+		throw new NoteSyncError('Missing Anki target deck or card type');
+	}
+
+	const noteId = await upsertNote({
+		fields: {
+			text: await markdownToHtml(transformedNote),
+		},
+		id: ankiNoteId,
+		deckName: ankiTargetDeck,
+		cardType: ankiCardType,
+		tags: ['from-obsidian'],
+	});
+
+	return {
+		noteId,
+		updatedMarkdown: regenerateGeneratedNoteSection(
+			markdown,
+			generateAnkiNoteIdMarker(noteId) + '\n' + transformedNote,
+		),
+	};
+};
+
+const isMarkdownFileInDirectory = (file: TFile, directory: string): boolean => {
+	if (file.extension !== 'md') {
+		return false;
+	}
+
+	if (!directory) {
+		return true;
+	}
+
+	return file.path === directory || file.path.startsWith(`${directory}/`);
+};
 
 export default class KimsAnkiPlugin extends Plugin {
 	settings: KimsAnkiPluginSettings;
+
+	private getNormalizedSyncDirectory(): string {
+		return normalizePath(this.settings.syncDirectory).replace(/^\.$/, '');
+	}
+
+	private async syncVaultFileWithAnki(file: TFile): Promise<'synced' | 'skipped'> {
+		const markdown = await this.app.vault.read(file);
+
+		try {
+			const result = await syncMarkdownNoteWithAnki(markdown);
+			await this.app.vault.modify(file, result.updatedMarkdown);
+			return 'synced';
+		} catch (error) {
+			if (error instanceof NoteSyncError) {
+				return 'skipped';
+			}
+
+			throw error;
+		}
+	}
+
+	private async syncAllNotesWithAnki(): Promise<BulkSyncResult> {
+		const directory = this.getNormalizedSyncDirectory();
+
+		if (!directory) {
+			throw new NoteSyncError('Set a sync directory before running bulk sync');
+		}
+
+		const files = this.app.vault
+			.getMarkdownFiles()
+			.filter((file) => isMarkdownFileInDirectory(file, directory));
+
+		const result: BulkSyncResult = {
+			syncedCount: 0,
+			skippedCount: 0,
+			failedFiles: [],
+		};
+
+		for (const file of files) {
+			try {
+				const status = await this.syncVaultFileWithAnki(file);
+
+				if (status === 'synced') {
+					result.syncedCount += 1;
+				} else {
+					result.skippedCount += 1;
+				}
+			} catch (error) {
+				console.error(`Failed to sync ${file.path} with Anki`, error);
+				result.failedFiles.push(file.path);
+			}
+		}
+
+		return result;
+	}
 
 	async onload() {
 		await this.loadSettings();
 
 		// scan all
-		this.addRibbonIcon('square-star', "Sync All Notes With Anki", (_evt: MouseEvent) => {
-			new Notice('This is a notice!');
+		this.addRibbonIcon('square-star', "Sync All Notes With Anki", async (_evt: MouseEvent) => {
+			try {
+				const result = await this.syncAllNotesWithAnki();
+				return new Notice(`Bulk sync complete: ${result.syncedCount} synced, ${result.skippedCount} skipped, ${result.failedFiles.length} failed`)
+			} catch (error) {
+				if (error instanceof NoteSyncError) {
+					return new Notice(error.message)
+				}
+
+				throw error
+			}
 		});
 		// scan current
 		this.addRibbonIcon('star', 'Sync Current Note With Anki', async (_evt: MouseEvent) => {
 			const md = getCurrentEditorContents(this.app) ?? ''
 
-			if (!hasUserNoteDelimiters(md) || !hasGeneratedNoteDelimiters(md)) {
-				return new Notice('Missing user note or generated note delimiters');
+			try {
+				const result = await syncMarkdownNoteWithAnki(md);
+				setCurrentEditorContents(this.app, result.updatedMarkdown)
+				return new Notice(`Anki note generated with id ${result.noteId}`)
+			} catch (error) {
+				if (error instanceof NoteSyncError) {
+					return new Notice(error.message)
+				}
+
+				throw error
 			}
-
-			const userNote = getUserNoteBetweenDelimiters(md);
-			const result = transformMarkdownToCloze(userNote);
-
-			if (!hasGeneratedCloze(result)) {
-				return new Notice('No cloze deletions were generated; skipping Anki sync');
-			}
-
-			const ankiTargetDeck = parseAnkiTargetDeck(md)
-			const ankiCardtype = parseAnkiCardType(md)
-			const ankiNoteId = parseAnkiNoteId(md)
-
-			if (!ankiCardtype || !ankiTargetDeck) {
-				return new Notice('Missing Anki target deck or card type');
-			}
-
-			const resultId = await upsertNote({
-				fields: {
-					text: await markdownToHtml(result)
-				},
-				id: ankiNoteId,
-				deckName: ankiTargetDeck,
-				cardType: ankiCardtype,
-				tags: ['from-obsidian']
-			})
-
-			setCurrentEditorContents(this.app, regenerateGeneratedNoteSection(md, generateAnkiNoteIdMarker(resultId) + '\n' + result))
-
-			return new Notice(`Anki note generated with id ${resultId}`)
 
 		});
 
@@ -96,8 +213,7 @@ export default class KimsAnkiPlugin extends Plugin {
 		// 	}
 		// });
 
-		// // This adds a settings tab so the user can configure various aspects of the plugin
-		// this.addSettingTab(new KimsAnkiPluginSettingTab(this.app, this));
+		this.addSettingTab(new KimsAnkiPluginSettingTab(this.app, this));
 
 		// // If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
 		// // Using this function will automatically remove the event listener when this plugin is disabled.
