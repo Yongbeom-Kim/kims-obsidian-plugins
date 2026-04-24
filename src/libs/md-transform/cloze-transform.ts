@@ -63,6 +63,28 @@ type TextNode = UnistNode & { type: 'text'; value: string }
 type ParagraphNode = UnistNode & { type: 'paragraph'; children?: UnistNode[] }
 type ListItemNode = UnistNode & { type: 'listItem' }
 
+const CLOZE_END = ' }}'
+
+const createClozePromptStartNode = (clozeIndex: number): TextNode => ({
+  type: 'text',
+  value: `{{c${clozeIndex}:::: `,
+})
+
+const createClozeAnswerStartNode = (clozeIndex: number): TextNode => ({
+  type: 'text',
+  value: `{{c${clozeIndex}:: `,
+})
+
+const createClozeEndNode = (): TextNode => ({
+  type: 'text',
+  value: CLOZE_END,
+})
+
+const createSeparatorNode = (separator: '-' | '='): TextNode => ({
+  type: 'text',
+  value: ` ${separator} `,
+})
+
 class MarkdownAstToClozeTransfomer {
   private clozeIndex = 0
   private readonly includePromptCloze: boolean
@@ -94,20 +116,20 @@ class MarkdownAstToClozeTransfomer {
     this.clozeIndex += 1
     paragraph.children = this.includePromptCloze
       ? [
-        this.createTextNode(`{{c${this.clozeIndex}:::: `),
+        createClozePromptStartNode(this.clozeIndex),
         ...split.before,
-        this.createTextNode(` }}`),
-        this.createTextNode(` ${split.separator} `),
-        this.createTextNode(`{{c${this.clozeIndex}:: `),
+        createClozeEndNode(),
+        createSeparatorNode(split.separator),
+        createClozeAnswerStartNode(this.clozeIndex),
         ...split.after,
-        this.createTextNode(` }}`),
+        createClozeEndNode(),
       ]
       : [
         ...split.before,
-        this.createTextNode(` ${split.separator} `),
-        this.createTextNode(`{{c${this.clozeIndex}:: `),
+        createSeparatorNode(split.separator),
+        createClozeAnswerStartNode(this.clozeIndex),
         ...split.after,
-        this.createTextNode(` }}`),
+        createClozeEndNode(),
       ]
   }
 
