@@ -62,8 +62,10 @@ const astToMarkdown = (tree: Root): string =>
 type TextNode = UnistNode & { type: 'text'; value: string }
 type ParagraphNode = UnistNode & { type: 'paragraph'; children?: UnistNode[] }
 type ListItemNode = UnistNode & { type: 'listItem' }
+type CodeNode = UnistNode & { type: 'code'; value: string }
 
 const CLOZE_END = ' }}'
+const HASH_COMMENT_PREFIX = '#'
 
 const createClozePromptStartNode = (clozeIndex: number): TextNode => ({
   type: 'text',
@@ -85,6 +87,9 @@ const createSeparatorNode = (separator: '-' | '='): TextNode => ({
   value: ` ${separator} `,
 })
 
+const createCodeBlockCloze = (line: string, clozeIndex: number): string =>
+  `{{c${clozeIndex}:: ${line}}}`
+
 class MarkdownAstToClozeTransfomer {
   private clozeIndex = 0
   private readonly includePromptCloze: boolean
@@ -96,6 +101,11 @@ class MarkdownAstToClozeTransfomer {
   visit = (node: UnistNode, _index?: number, parent?: UnistNode) => {
     if (node.type === 'paragraph') {
       this.visitParagraphNode(node as ParagraphNode, parent)
+      return
+    }
+
+    if (node.type === 'code') {
+      this.visitCodeNode(node as CodeNode)
     }
   }
 
@@ -131,6 +141,47 @@ class MarkdownAstToClozeTransfomer {
         ...split.after,
         createClozeEndNode(),
       ]
+  }
+
+  private visitCodeNode(codeBlock: CodeNode): void {
+    codeBlock.value = this.transformCodeBlockValue(codeBlock.value)
+  }
+
+  private transformCodeBlockValue(codeBlockValue: string): string {
+    const lines = codeBlockValue.split('\n')
+    const transformedLines: string[] = []
+    let shouldStartCloze = false
+    let activeCodeBlockClozeIndex: number | null = null
+
+    for (const line of lines) {
+      if (this.isBlankCodeLine(line)) {
+        transformedLines.push(line)
+        shouldStartCloze = false
+        activeCodeBlockClozeIndex = null
+        continue
+      }
+
+      if (this.isHashCommentLine(line)) {
+        transformedLines.push(line)
+        shouldStartCloze = true
+        activeCodeBlockClozeIndex = null
+        continue
+      }
+
+      if (!shouldStartCloze && activeCodeBlockClozeIndex === null) {
+        transformedLines.push(line)
+        continue
+      }
+
+      if (activeCodeBlockClozeIndex === null) {
+        this.clozeIndex += 1
+        activeCodeBlockClozeIndex = this.clozeIndex
+      }
+
+      transformedLines.push(createCodeBlockCloze(line, activeCodeBlockClozeIndex))
+    }
+
+    return transformedLines.join('\n')
   }
 
 /**
@@ -198,6 +249,14 @@ class MarkdownAstToClozeTransfomer {
 
   private isListItemNode(node?: UnistNode): node is ListItemNode {
     return node?.type === 'listItem'
+  }
+
+  private isBlankCodeLine(line: string): boolean {
+    return line.trim().length === 0
+  }
+
+  private isHashCommentLine(line: string): boolean {
+    return line.trimStart().startsWith(HASH_COMMENT_PREFIX)
   }
 
   private createTextNode(value: string): TextNode {
