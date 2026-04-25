@@ -13,7 +13,7 @@ Quick starting guide for new plugin devs:
 
 - Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
 - Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/kims-anki-plugin` folder.
+- Clone your repo to a local development folder. For convenience, you can symlink `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/kims-obsidian-to-anki-plugin` folder.
 - Install NodeJS, then run `npm i` in the command line under your repo folder.
 - Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
 - Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
@@ -48,7 +48,7 @@ Quick starting guide for new plugin devs:
 
 ## Manually installing the plugin
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/kims-anki-plugin/`.
+- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/kims-obsidian-to-anki-plugin/`.
 
 ## Improve code quality with eslint
 - [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 

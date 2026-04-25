@@ -1,5 +1,5 @@
 {
-	"name": "obsidian-kims-anki-plugin",
+	"name": "obsidian-kims-obsidian-to-anki-plugin",
 	"version": "1.0.0",
 	"description": "Kim's Anki Plugin for Obsidian.",
 	"main": "main.js",
