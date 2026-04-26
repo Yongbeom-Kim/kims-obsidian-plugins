@@ -1,3 +1,4 @@
+import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
 import { Root } from "remark-parse/lib";
@@ -11,6 +12,11 @@ export type ClozeTransformOptions = {
   includePromptCloze?: boolean
 }
 
+const TABLE_MARKDOWN_OPTIONS = {
+  tableCellPadding: true,
+  tablePipeAlign: false,
+}
+
 export const transformMarkdownToCloze = (markdown: string, options: ClozeTransformOptions = {}): string => {
     const ast = markdownToAst(markdown)
     const transformedAst = convertToClozeAST(ast, options)
@@ -19,12 +25,13 @@ export const transformMarkdownToCloze = (markdown: string, options: ClozeTransfo
 
 const markdownToAst = (markdown: string) => unified()
   .use(remarkParse)
+  .use(remarkGfm)
   .use(remarkMath)
   .use(remarkParseObsidianLink)
   .parse(markdown) as Root
 
 const convertToClozeAST = (ast: Root, options: ClozeTransformOptions): Root => {
-  const astCopy = JSON.parse(JSON.stringify(ast)) // TODO: dangerous
+  const astCopy = structuredClone(ast)
   const visitor = new MarkdownAstToClozeTransfomer(options)
   visit(astCopy, visitor.visit)
   return astCopy
@@ -33,24 +40,18 @@ const convertToClozeAST = (ast: Root, options: ClozeTransformOptions): Root => {
 const astToMarkdown = (tree: Root): string =>
   unified()
     .use(remarkParseObsidianLink)
+    .use(remarkGfm, TABLE_MARKDOWN_OPTIONS)
     .use(remarkStringify, {
-      // Keep unordered list output stable for tests and plugin output.
       bullet: '-',
-      // Control when root-level nodes should be written without a blank line.
       join: [(left, right, parent) => {
-        // Preserve the common markdown pattern of a heading immediately
-        // followed by a list without inserting an empty line.
         if (parent?.type === 'root' && left.type === 'heading' && right.type === 'list') {
           return 0
         }
 
-        // Avoid separating adjacent top-level lists, such as a '-' list
-        // followed by an ordered list, with an extra blank line.
         if (parent?.type === 'root' && left.type === 'list' && right.type === 'list') {
           return 0
         }
 
-        // Use remark's default spacing rules for every other node pair.
         return undefined
       }],
     })
@@ -60,12 +61,17 @@ const astToMarkdown = (tree: Root): string =>
 
 
 type TextNode = UnistNode & { type: 'text'; value: string }
-type ParagraphNode = UnistNode & { type: 'paragraph'; children?: UnistNode[] }
+type ParentNode = UnistNode & { children?: UnistNode[] }
+type ParagraphNode = ParentNode & { type: 'paragraph' }
 type ListItemNode = UnistNode & { type: 'listItem' }
 type CodeNode = UnistNode & { type: 'code'; value: string }
+type TableCellNode = ParentNode & { type: 'tableCell' }
+type TableRowNode = ParentNode & { type: 'tableRow'; children?: TableCellNode[] }
+type TableNode = ParentNode & { type: 'table'; children?: TableRowNode[] }
 
 const CLOZE_END = ' }}'
 const HASH_COMMENT_PREFIX = '#'
+const CLOZE_START_PATTERN = /\{\{c\d+::/
 
 const createClozePromptStartNode = (clozeIndex: number): TextNode => ({
   type: 'text',
@@ -90,6 +96,17 @@ const createSeparatorNode = (separator: '-' | '='): TextNode => ({
 const createCodeBlockCloze = (line: string, clozeIndex: number): string =>
   `{{c${clozeIndex}:: ${line}}}`
 
+const getNodeTextContent = (nodes: UnistNode[]): string => {
+  return nodes.map((node) => {
+    const nodeWithValue = node as { value?: unknown }
+    if (typeof nodeWithValue.value === 'string') {
+      return nodeWithValue.value
+    }
+
+    return getNodeTextContent((node as ParentNode).children ?? [])
+  }).join('')
+}
+
 class MarkdownAstToClozeTransfomer {
   private clozeIndex = 0
   private readonly includePromptCloze: boolean
@@ -101,6 +118,11 @@ class MarkdownAstToClozeTransfomer {
   visit = (node: UnistNode, _index?: number, parent?: UnistNode) => {
     if (node.type === 'paragraph') {
       this.visitParagraphNode(node as ParagraphNode, parent)
+      return
+    }
+
+    if (node.type === 'table') {
+      this.visitTableNode(node as TableNode)
       return
     }
 
@@ -118,6 +140,7 @@ class MarkdownAstToClozeTransfomer {
     if (!children?.length) {
       return
     }
+
     const split = this.splitParagraphChildrenAtFirstSeparator(children)
     if (!split) {
       return
@@ -143,8 +166,55 @@ class MarkdownAstToClozeTransfomer {
       ]
   }
 
+  private visitTableNode(table: TableNode): void {
+    const rows = (table.children ?? []) as TableRowNode[]
+    if (rows.length === 0) {
+      return
+    }
+
+    for (const [rowIndex, row] of rows.entries()) {
+      if (rowIndex === 0) {
+        continue
+      }
+
+      for (const [cellIndex, cell] of ((row.children ?? []) as TableCellNode[]).entries()) {
+        if (cellIndex === 0) {
+          continue
+        }
+
+        this.maybeClozeTableCell(cell)
+      }
+    }
+  }
+
   private visitCodeNode(codeBlock: CodeNode): void {
     codeBlock.value = this.transformCodeBlockValue(codeBlock.value)
+  }
+
+  private maybeClozeTableCell(cell: TableCellNode): void {
+    const children = cell.children ?? []
+    if (getNodeTextContent(children).trim().length === 0 || this.hasExistingCloze(children)) {
+      return
+    }
+
+    this.clozeIndex += 1
+    cell.children = [
+      createClozeAnswerStartNode(this.clozeIndex),
+      ...children,
+      createClozeEndNode(),
+    ]
+  }
+
+  private hasExistingCloze(nodes: UnistNode[]): boolean {
+    return nodes.some((node) => this.nodeContainsExistingCloze(node))
+  }
+
+  private nodeContainsExistingCloze(node: UnistNode): boolean {
+    if (this.isTextNode(node)) {
+      return CLOZE_START_PATTERN.test(node.value)
+    }
+
+    return this.hasExistingCloze((node as ParentNode).children ?? [])
   }
 
   private transformCodeBlockValue(codeBlockValue: string): string {
@@ -184,16 +254,6 @@ class MarkdownAstToClozeTransfomer {
     return transformedLines.join('\n')
   }
 
-/**
- * Splits paragraph children at the first occurrence of a separator \s([-=])\s
- * surrounded by whitespace. Only considers text nodes and stops at the first
- * newline encountered before a match.
- *
- * @param children - Array of child nodes within a paragraph.
- * @returns Object with `before` and `after` node arrays and the matched
- *          `separator`, or `null` if no valid separator is found or if either
- *          side is empty.
- */
   private splitParagraphChildrenAtFirstSeparator(children: UnistNode[]): { before: UnistNode[]; after: UnistNode[]; separator: '-' | '=' } | null {
     const before: UnistNode[] = []
     const after: UnistNode[] = []
@@ -243,6 +303,13 @@ class MarkdownAstToClozeTransfomer {
     return { before, after, separator: foundSeparator }
   }
 
+  private createTextNode(value: string): TextNode {
+    return {
+      type: 'text',
+      value,
+    }
+  }
+
   private isTextNode(node: UnistNode): node is TextNode {
     return node.type === 'text' && typeof (node as TextNode).value === 'string'
   }
@@ -257,9 +324,5 @@ class MarkdownAstToClozeTransfomer {
 
   private isHashCommentLine(line: string): boolean {
     return line.trimStart().startsWith(HASH_COMMENT_PREFIX)
-  }
-
-  private createTextNode(value: string): TextNode {
-    return { type: 'text', value }
   }
 }

@@ -259,52 +259,155 @@ setup()
         expect(transformMarkdownToCloze(input)).toBe(expected);
     });
 
-    test('handles a larger anki-card-style markdown note containing prose, lists, and code blocks', () => {
+    test('clozes every non-header body cell outside the first column in a basic markdown table', () => {
         const input = `
-Anki Target Deck: Coding::Python
-Anki Card Type: Cloze
-
-# Goal
-- Explain the pattern - comment-delimited cloze blocks
-
-## Example
-\`\`\`py
-def main():
-    setup()
-
-    # reveal
-    code1
-    code2
-
-    cleanup()
-\`\`\`
-
-## Notes
-- Reset happens on blank line - yes
+| Prompt | Answer |
+| - | - |
+| TCP handshake | synchronize |
+| HTTP 404 | not found |
 `.trim()
 
         const expected = `
-Anki Target Deck: Coding::Python
-Anki Card Type: Cloze
+| Prompt | Answer |
+| - | - |
+| TCP handshake | {{c1:: synchronize }} |
+| HTTP 404 | {{c2:: not found }} |
+`.trim()
 
-# Goal
-- Explain the pattern - {{c1:: comment-delimited cloze blocks }}
+        expect(transformMarkdownToCloze(input)).toBe(expected);
+    });
 
-## Example
+    test('clozes each eligible data cell independently across wider rows', () => {
+        const input = `
+| Topic | Hint | Answer |
+| - | - | - |
+| TCP handshake | SYN packet | synchronize |
+| HTTP status | client error | not found |
+`.trim()
+
+        const expected = `
+| Topic | Hint | Answer |
+| - | - | - |
+| TCP handshake | {{c1:: SYN packet }} | {{c2:: synchronize }} |
+| HTTP status | {{c3:: client error }} | {{c4:: not found }} |
+`.trim()
+
+        expect(transformMarkdownToCloze(input)).toBe(expected);
+    });
+
+    test('preserves alignment markers and escaped pipes while clozing eligible table cells', () => {
+        const input = `
+| Topic | Hint | Answer |
+| :-- | :-: | --: |
+| TCP handshake | a \\| b | synchronize |
+`.trim()
+
+        const expected = `
+| Topic | Hint | Answer |
+| :- | :-: | -: |
+| TCP handshake | {{c1:: a \\| b }} | {{c2:: synchronize }} |
+`.trim()
+
+        expect(transformMarkdownToCloze(input)).toBe(expected);
+    });
+
+    test('skips empty data cells without consuming cloze numbering for later cells', () => {
+        const input = `
+| Topic | A | B |
+| - | - | - |
+| TCP handshake | | ACK |
+| HTTP status | client error | |
+`.trim()
+
+        const expected = `
+| Topic | A | B |
+| - | - | - |
+| TCP handshake | | {{c1:: ACK }} |
+| HTTP status | {{c2:: client error }} | |
+`.trim()
+
+        expect(transformMarkdownToCloze(input)).toBe(expected);
+    });
+
+    test('preserves inline code, math, and wikilinks inside table cells while clozing eligible data cells', () => {
+        const input = `
+| Topic | Hint | Answer |
+| - | - | - |
+| [[TCP]] | \`SYN\` | $x = 1$ |
+`.trim()
+
+        const expected = `
+| Topic | Hint | Answer |
+| - | - | - |
+| [[TCP]] | {{c1:: \`SYN\` }} | {{c2:: $x = 1$ }} |
+`.trim()
+
+        expect(transformMarkdownToCloze(input)).toBe(expected);
+    });
+
+    test('does not double-wrap cells that already contain cloze markup', () => {
+        const input = `
+| Topic | Hint | Answer |
+| - | - | - |
+| TCP handshake | {{c9:: SYN packet }} | synchronize |
+`.trim()
+
+        const expected = `
+| Topic | Hint | Answer |
+| - | - | - |
+| TCP handshake | {{c9:: SYN packet }} | {{c1:: synchronize }} |
+`.trim()
+
+        expect(transformMarkdownToCloze(input)).toBe(expected);
+    });
+
+    test('ignores includePromptCloze for table cells while keeping numbering monotonic', () => {
+        const input = `
+- Prompt - answer
+
+| Topic | A | B |
+| - | - | - |
+| TCP handshake | SYN | ACK |
+`.trim()
+
+        const expected = `
+- {{c1:::: Prompt }} - {{c1:: answer }}
+
+| Topic | A | B |
+| - | - | - |
+| TCP handshake | {{c2:: SYN }} | {{c3:: ACK }} |
+`.trim()
+
+        expect(transformMarkdownToCloze(input, { includePromptCloze: true })).toBe(expected);
+    });
+
+    test('keeps cloze numbering monotonic across list items, table data cells, and code blocks', () => {
+        const input = `
+# Card
+- Prompt - answer
+
+| Topic | A | B |
+| - | - | - |
+| TCP handshake | SYN | ACK |
 
 \`\`\`py
-def main():
-    setup()
-
-    # reveal
-{{c2::     code1}}
-{{c2::     code2}}
-
-    cleanup()
+# reveal
+line1
 \`\`\`
+`.trim()
 
-## Notes
-- Reset happens on blank line - {{c3:: yes }}
+        const expected = `
+# Card
+- Prompt - {{c1:: answer }}
+
+| Topic | A | B |
+| - | - | - |
+| TCP handshake | {{c2:: SYN }} | {{c3:: ACK }} |
+
+\`\`\`py
+# reveal
+{{c4:: line1}}
+\`\`\`
 `.trim()
 
         expect(transformMarkdownToCloze(input)).toBe(expected);

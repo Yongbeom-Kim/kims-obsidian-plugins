@@ -17,3 +17,41 @@ test('markdownToHtml uses the provided vault name in generated obsidian links', 
 
   expect(html).toContain('obsidian://open?vault=team-vault&#x26;file=note%2Fpath.md')
 });
+
+test('markdownToHtml renders markdown tables as semantic html tables instead of paragraphs', async () => {
+  const html = await markdownToHtml(`
+| Prompt | Answer |
+| - | - |
+| TCP handshake | {{c1:: synchronize }} |
+`.trim(), 'vault-v2')
+
+  expect(html).toContain('<table>')
+  expect(html).toContain('<thead>')
+  expect(html).toContain('<tbody>')
+  expect(html).toContain('<th>Prompt</th>')
+  expect(html).toContain('<td>TCP handshake</td>')
+  expect(html).toContain('<td>{{c1:: synchronize }}</td>')
+});
+
+test('markdownToHtml renders obsidian links inside table cells as anchor tags', async () => {
+  const html = await markdownToHtml(`
+| Topic | Reference |
+| - | - |
+| TCP handshake | [[Protocols/TCP]] |
+`.trim(), 'vault-v2')
+
+  expect(html).toContain('<table>')
+  expect(html).toContain('obsidian://open?vault=vault-v2&#x26;file=Protocols%2FTCP.md')
+  expect(html).toContain('<a href="obsidian://open?vault=vault-v2&#x26;file=Protocols%2FTCP.md">Protocols/TCP</a>')
+});
+
+test('markdownToHtml keeps inline math inside table cells without breaking table markup', async () => {
+  const html = await markdownToHtml(`
+| Topic | Answer |
+| - | - |
+| Identity | {{c1:: $x = 1$ }} |
+`.trim(), 'vault-v2')
+
+  expect(html).toContain('<table>')
+  expect(html).toContain('{{c1:: \\(x = 1\\) }}')
+});

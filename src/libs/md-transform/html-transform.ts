@@ -1,5 +1,5 @@
-import rehypeKatex from "rehype-katex";
 import rehypeStringify from "rehype-stringify";
+import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
 import remarkRehype, { type Options as RemarkRehypeOptions } from "remark-rehype";
@@ -30,13 +30,13 @@ const createRemarkRehypeOptions = (vaultName: string): RemarkRehypeOptions => ({
     inlineMath(_state, node) {
       return {
         type: 'text',
-        value: `\\(${node.value}\\)`,
+        value: `\\(${(node as { value: string }).value}\\)`,
       }
     },
     math(_state, node) {
       return {
         type: 'text',
-        value: `\\[${node.value}\\]`,
+        value: `\\[${(node as { value: string }).value}\\]`,
       }
     },
     obsidianLink(_state, node: ObsidianLink) {
@@ -48,6 +48,7 @@ const createRemarkRehypeOptions = (vaultName: string): RemarkRehypeOptions => ({
 const createMarkdownToHtmlProcessor = (vaultName: string) =>
   unified()
     .use(remarkParse)
+    .use(remarkGfm)
     .use(remarkMath)
     .use(remarkParseObsidianLink)
     .use(remarkRehype, createRemarkRehypeOptions(vaultName))
