@@ -4,9 +4,16 @@
 	"private": true,
 	"packageManager": "pnpm@10.28.2",
 	"scripts": {
-		"dev": "pnpm --filter obsidian-kims-obsidian-to-anki-plugin dev",
-		"build": "pnpm --filter obsidian-kims-obsidian-to-anki-plugin build",
-		"test": "pnpm --filter obsidian-kims-obsidian-to-anki-plugin test",
-		"lint": "pnpm --filter obsidian-kims-obsidian-to-anki-plugin lint"
+		"dev": "pnpm dev:obsidian-to-anki",
+		"dev:obsidian-to-anki": "pnpm --filter obsidian-kims-obsidian-to-anki-plugin dev",
+		"dev:plantuml": "pnpm --filter obsidian-kims-plantuml-plugin dev",
+		"build": "pnpm -r --stream build",
+		"test": "pnpm -r --if-present test",
+		"lint": "pnpm -r --stream lint",
+		"plantuml:download": "pnpm --filter obsidian-kims-plantuml-plugin plantuml:download",
+		"plantuml:serve": "pnpm --filter obsidian-kims-plantuml-plugin plantuml:serve"
+	},
+	"devDependencies": {
+		"eslint": "^9.39.1"
 	}
 }

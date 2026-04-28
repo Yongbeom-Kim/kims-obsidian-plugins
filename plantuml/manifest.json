@@ -1,0 +1,9 @@
+{
+	"id": "kims-plantuml-plugin",
+	"name": "Kim's PlantUML Plugin",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Render and manage PlantUML diagrams in Obsidian notes.",
+	"author": "Yongbeom Kim",
+	"isDesktopOnly": true
+}
