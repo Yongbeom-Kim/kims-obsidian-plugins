@@ -108,9 +108,9 @@ export default class KimsPlantUmlPlugin extends Plugin {
 			cls: "kims-plantuml-placeholder",
 		});
 
-		container.createEl("strong", {
-			text: "Diagram preview",
-		});
+		// container.createEl("strong", {
+		// 	text: "Diagram preview",
+		// });
 
 		const previewEl = container.createDiv();
 		ctx.addChild(new DebouncedPlantUmlRenderChild(
