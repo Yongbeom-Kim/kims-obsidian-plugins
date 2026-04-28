@@ -6,7 +6,9 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  obsidian-to-anki:
     dependencies:
       axios:
         specifier: ^1.15.0
