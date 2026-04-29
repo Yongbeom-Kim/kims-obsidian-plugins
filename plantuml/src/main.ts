@@ -120,14 +120,14 @@ export default class KimsPlantUmlPlugin extends Plugin {
 				this.renderPlantUmlImage(previewEl, diagramSource);
 			},
 		));
-
-		const sourceDetails = container.createEl("details");
-		sourceDetails.createEl("summary", {
-			text: "Source",
-		});
-		sourceDetails.createEl("pre", {
-			text: diagramSource,
-		});
+		
+		// const sourceDetails = container.createEl("details");
+		// sourceDetails.createEl("summary", {
+		// 	text: "Source",
+		// });
+		// sourceDetails.createEl("pre", {
+		// 	text: diagramSource,
+		// });
 	}
 
 	private renderPlantUmlImage(el: HTMLElement, diagramSource: string): void {
