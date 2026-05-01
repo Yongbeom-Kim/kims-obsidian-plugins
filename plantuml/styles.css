@@ -3,6 +3,8 @@
 	border-radius: 8px;
 	/* padding: 12px; */
 	background: var(--background-secondary);
+	max-height: 85vh;
+	width: fit-content;
 }
 
 .kims-plantuml-placeholder__meta {
@@ -14,6 +16,7 @@
 .kims-plantuml-placeholder__image {
 	display: block;
 	max-width: 100%;
+	max-height: 85vh;
 }
 
 .kims-plantuml-placeholder pre {
