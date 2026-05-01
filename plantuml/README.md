@@ -10,8 +10,6 @@ From the monorepo root:
 
 ```bash
 pnpm install
-pnpm plantuml:download
-pnpm plantuml:serve
 pnpm dev:plantuml
 ```
 
@@ -23,10 +21,10 @@ pnpm --filter obsidian-kims-plantuml-plugin build
 
 ## Manual Install
 
-For local development, symlink `plantuml/main.js`, `plantuml/manifest.json`, `plantuml/styles.css`, and `plantuml/plantuml-server.json` into your vault's `.obsidian/plugins/kims-plantuml-plugin` folder.
+For local development, symlink `plantuml/main.js`, `plantuml/manifest.json`, and `plantuml/styles.css` into your vault's `.obsidian/plugins/kims-plantuml-plugin` folder.
 
 ## Current Scope
 
-The plugin registers `plantuml` and `puml` markdown code blocks and renders them through a local PlantUML pico web server. `pnpm plantuml:serve` asks Node to reserve an ephemeral localhost port, starts PlantUML on that port, and writes `plantuml/plantuml-server.json` so the plugin can discover the URL.
+The plugin registers `plantuml` and `puml` markdown code blocks and renders them through a local PlantUML pico web server.
 
-`pnpm plantuml:download` saves `plantuml.jar` under `plantuml/.plantuml/`, which is ignored by Git.
+On startup, the plugin checks `plantuml-server.json` in its plugin directory, reuses the server if it is still healthy, and otherwise downloads `plantuml.jar` into `.plantuml/` when needed, starts a new local server, and rewrites the runtime config.

@@ -1,4 +1,5 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
+import { DEFAULT_SETTINGS } from "./const";
 import KimsPlantUmlPlugin from "./main";
 
 export interface KimsPlantUmlPluginSettings {
@@ -6,12 +7,6 @@ export interface KimsPlantUmlPluginSettings {
 	renderDebounceMs: number;
 	useSmetanaLayout: boolean;
 }
-
-export const DEFAULT_SETTINGS: KimsPlantUmlPluginSettings = {
-	javaDownloadCheck: true,
-	renderDebounceMs: 300,
-	useSmetanaLayout: false,
-};
 
 export class KimsPlantUmlPluginSettingTab extends PluginSettingTab {
 	plugin: KimsPlantUmlPlugin;

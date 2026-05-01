@@ -9,9 +9,7 @@
 		"dev:plantuml": "pnpm --filter obsidian-kims-plantuml-plugin dev",
 		"build": "pnpm -r --stream build",
 		"test": "pnpm -r --if-present test",
-		"lint": "pnpm -r --stream lint",
-		"plantuml:download": "pnpm --filter obsidian-kims-plantuml-plugin plantuml:download",
-		"plantuml:serve": "pnpm --filter obsidian-kims-plantuml-plugin plantuml:serve"
+		"lint": "pnpm -r --stream lint"
 	},
 	"devDependencies": {
 		"eslint": "^9.39.1"

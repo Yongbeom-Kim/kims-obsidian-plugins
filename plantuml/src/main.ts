@@ -1,19 +1,11 @@
 import { MarkdownRenderChild, Notice, Plugin, type MarkdownPostProcessorContext } from "obsidian";
-import { createPlantUmlSvgUrl, preparePlantUmlSource } from "./lib/plantuml-client";
+import { DEFAULT_PLANTUML_SOURCE, DEFAULT_SETTINGS } from "./const";
+import { createPlantUmlImageUrl } from "./lib/plantuml-client";
+import { ensurePlantUmlServer } from "./lib/plantuml-server";
 import {
-	shutdownPlantUmlServer,
-	startPlantUmlServer,
-} from "./lib/plantuml-server";
-import {
-	DEFAULT_SETTINGS,
 	KimsPlantUmlPluginSettingTab,
 	type KimsPlantUmlPluginSettings,
 } from "./settings";
-
-const DEFAULT_PLANTUML_SOURCE = `@startuml
-Alice -> Bob: Hello
-Bob --> Alice: Hi
-@enduml`;
 
 export default class KimsPlantUmlPlugin extends Plugin {
 	settings: KimsPlantUmlPluginSettings;
@@ -26,26 +18,17 @@ export default class KimsPlantUmlPlugin extends Plugin {
 		debugLog("onload: settings loaded", this.settings);
 		this.addSettingTab(new KimsPlantUmlPluginSettingTab(this.app, this));
 
-		debugLog("onload: shutting down previous PlantUML server");
-		await shutdownPlantUmlServer(
-			this.app.vault.adapter,
-			this.manifest.dir,
-		);
-		debugLog("onload: previous PlantUML server shutdown complete");
-
 		try {
-			debugLog("onload: starting PlantUML server", {
+			debugLog("onload: ensuring PlantUML server", {
 				pluginDir: this.manifest.dir,
 				javaDownloadCheck: this.settings.javaDownloadCheck,
 			});
-			this.plantUmlServerUrl = await startPlantUmlServer(
+			this.plantUmlServerUrl = await ensurePlantUmlServer(
 				this.app.vault.adapter,
 				this.manifest.dir,
-				{
-					javaDownloadCheck: this.settings.javaDownloadCheck,
-				},
+				this.settings.javaDownloadCheck,
 			);
-			debugLog("onload: PlantUML server started", {
+			debugLog("onload: PlantUML server ready", {
 				url: this.plantUmlServerUrl,
 			});
 		} catch (error) {
@@ -65,14 +48,6 @@ export default class KimsPlantUmlPlugin extends Plugin {
 
 		debugLog("onload: complete");
 		new Notice("Diagram plugin loaded");
-	}
-
-	onunload(): void {
-		debugLog("onunload: shutting down PlantUML server");
-		void shutdownPlantUmlServer(
-			this.app.vault.adapter,
-			this.manifest.dir,
-		);
 	}
 
 	async loadSettings(): Promise<void> {
@@ -97,12 +72,7 @@ export default class KimsPlantUmlPlugin extends Plugin {
 	private renderPlantUml(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
 		el.empty();
 
-		const diagramSource = preparePlantUmlSource(
-			source.trim() || DEFAULT_PLANTUML_SOURCE,
-			{
-				useSmetanaLayout: this.settings.useSmetanaLayout,
-			},
-		);
+		const rawDiagramSource = source.trim() || DEFAULT_PLANTUML_SOURCE;
 
 		const container = el.createDiv({
 			cls: "kims-plantuml-placeholder",
@@ -117,7 +87,7 @@ export default class KimsPlantUmlPlugin extends Plugin {
 			previewEl,
 			this.settings.renderDebounceMs,
 			() => {
-				this.renderPlantUmlImage(previewEl, diagramSource);
+				this.renderPlantUmlImage(previewEl, rawDiagramSource);
 			},
 		));
 		
@@ -130,7 +100,7 @@ export default class KimsPlantUmlPlugin extends Plugin {
 		// });
 	}
 
-	private renderPlantUmlImage(el: HTMLElement, diagramSource: string): void {
+	private renderPlantUmlImage(el: HTMLElement, rawDiagramSource: string): void {
 		el.empty();
 		if (!this.plantUmlServerUrl) {
 			el.createEl("p", {
@@ -144,7 +114,13 @@ export default class KimsPlantUmlPlugin extends Plugin {
 			cls: "kims-plantuml-placeholder__image",
 			attr: {
 				alt: "Diagram rendered by local server",
-				src: createPlantUmlSvgUrl(this.plantUmlServerUrl, diagramSource),
+				src: createPlantUmlImageUrl(
+					{
+						...this.settings,
+						serverUrl: this.plantUmlServerUrl,
+					},
+					rawDiagramSource,
+				),
 			},
 		});
 	}

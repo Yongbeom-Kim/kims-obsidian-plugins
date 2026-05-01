@@ -1,422 +1,54 @@
 import { spawn } from "child_process";
-import { writeFile, mkdir, unlink } from "fs/promises";
+import { access, mkdir, writeFile } from "fs/promises";
 import { get as httpGet } from "http";
 import { get as httpsGet } from "https";
 import { createServer } from "net";
 import type { DataAdapter } from "obsidian";
-import { createPlantUmlSvgUrl } from "./plantuml-client";
-
-export const DEFAULT_PLANTUML_SERVER_URL = "http://localhost:8080";
-export const PLANTUML_SERVER_CONFIG_FILE = "plantuml-server.json";
-
-const PLANTUML_JAR_DOWNLOAD_URL = "https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar";
-const PLANTUML_DIR = ".plantuml";
-const PLANTUML_JAR_FILE = "plantuml.jar";
-const LOCAL_PLANTUML_JAR_PATH = ".plantuml/plantuml.jar";
-const LOCAL_PLANTUML_SERVER_CONFIG_PATH = PLANTUML_SERVER_CONFIG_FILE;
-const PLANTUML_READY_TIMEOUT_MS = 10_000;
-const PLANTUML_READY_POLL_MS = 100;
-const PLANTUML_READY_SOURCE = "@startuml\nAlice -> Bob: Ready\n@enduml";
+import {
+	PLANTUML_DIR,
+	PLANTUML_JAR_DOWNLOAD_URL,
+	PLANTUML_JAR_PATH,
+	PLANTUML_READY_POLL_MS,
+	PLANTUML_READY_SOURCE,
+	PLANTUML_READY_TIMEOUT_MS,
+	PLANTUML_SERVER_CONFIG_PATH,
+} from "../const";
+import { createPlantUmlImageUrl } from "./plantuml-client";
 
 interface PlantUmlServerConfig {
 	url: string;
-	port?: number;
 	pid?: number;
-	startedAt?: string;
 }
 
-interface StartPlantUmlServerOptions {
-	javaDownloadCheck: boolean;
-}
-
-export async function loadPlantUmlServerUrl(adapter: DataAdapter, pluginDir?: string): Promise<string> {
-	const config = await loadPlantUmlServerConfig(adapter, pluginDir);
-
-	if (config) {
-		return normalizeServerUrl(config.url);
-	}
-
-	return DEFAULT_PLANTUML_SERVER_URL;
-}
-
-export async function shutdownPlantUmlServer(adapter: DataAdapter, pluginDir?: string): Promise<boolean> {
-	debugLog("shutdown: loading server config", { pluginDir });
-	const config = await loadPlantUmlServerConfig(adapter, pluginDir);
-	if (!config?.pid) {
-		debugLog("shutdown: no server PID found");
-		return false;
-	}
-
-	try {
-		debugLog("shutdown: sending SIGTERM", { pid: config.pid });
-		process.kill(config.pid, "SIGTERM");
-	} catch (error) {
-		if (!isProcessNotFoundError(error)) {
-			debugLog("shutdown: failed to send SIGTERM", error);
-			throw error;
-		}
-		debugLog("shutdown: process already gone", { pid: config.pid });
-	}
-
-	await removePlantUmlServerConfig(adapter, pluginDir);
-	debugLog("shutdown: removed server config");
-
-	return true;
-}
-
-export async function startPlantUmlServer(
+export async function ensurePlantUmlServer(
 	adapter: DataAdapter,
 	pluginDir: string | undefined,
-	options: StartPlantUmlServerOptions,
+	javaDownloadCheck: boolean,
 ): Promise<string> {
 	if (!pluginDir) {
-		throw new Error("Cannot start PlantUML server without a plugin directory.");
+		throw new Error("Cannot ensure PlantUML server without a plugin directory.");
 	}
 
-	debugLog("start: ensuring PlantUML jar", {
-		pluginDir,
-		javaDownloadCheck: options.javaDownloadCheck,
-	});
-	const jarPath = await ensurePlantUmlJar(adapter, pluginDir, options);
-	debugLog("start: PlantUML jar ready", { jarPath });
-	const port = await reserveEphemeralPort(createServer);
-	const serverUrl = `http://localhost:${port}`;
-	debugLog("start: reserved port", { port, serverUrl });
-	const child = spawn("java", ["-jar", jarPath, `--http-server:${port}`], {
-		stdio: ["ignore", "pipe", "pipe"],
-	});
-	debugLog("start: spawned Java process", { pid: child.pid });
-
-	try {
-		debugLog("start: waiting for server readiness", { serverUrl });
-		await waitForPlantUmlServer(serverUrl);
-	} catch (error) {
-		debugLog("start: readiness failed; killing Java process", {
-			pid: child.pid,
-			error,
-		});
-		child.kill("SIGTERM");
-		throw error;
-	}
-	debugLog("start: server is ready", { serverUrl });
-
-	await writePlantUmlServerConfig(adapter, pluginDir, {
-		url: serverUrl,
-		port,
-		pid: child.pid,
-		startedAt: new Date().toISOString(),
-	});
-	debugLog("start: wrote server config");
-
-	child.stdout.on("data", (chunk: Buffer) => {
-		debugLog("java stdout", chunk.toString());
-		process.stdout.write(chunk);
-	});
-
-	child.stderr.on("data", (chunk: Buffer) => {
-		debugLog("java stderr", chunk.toString());
-		process.stderr.write(chunk);
-	});
-
-	child.on("exit", () => {
-		debugLog("java exit: removing server config", { pid: child.pid });
-		void removePlantUmlServerConfig(adapter, pluginDir);
-	});
-
-	return serverUrl;
-}
-
-export async function serveLocalPlantUmlServer(): Promise<void> {
-	const port = await reserveEphemeralPort(createServer);
-	const serverUrl = `http://localhost:${port}`;
-	const child = spawn("java", ["-jar", LOCAL_PLANTUML_JAR_PATH, `--http-server:${port}`], {
-		stdio: ["ignore", "pipe", "pipe"],
-	});
-
-	try {
-		await waitForPlantUmlServer(serverUrl);
-	} catch (error) {
-		child.kill("SIGTERM");
-		throw error;
+	const serverConfig = await readServerConfig(adapter, pluginDir);
+	if (serverConfig?.url && await checkServerStatus(serverConfig.url)) {
+		return serverConfig.url;
 	}
 
-	await writeFile(
-		LOCAL_PLANTUML_SERVER_CONFIG_PATH,
-		`${JSON.stringify({
-			url: serverUrl,
-			port,
-			pid: child.pid,
-			startedAt: new Date().toISOString(),
-		}, null, "\t")}\n`,
-	);
+	const jarPath = await ensurePlantUmlJar(adapter, pluginDir, javaDownloadCheck);
 
-	process.stdout.write(`PlantUML server URL: ${serverUrl}\n`);
-
-	child.stdout.on("data", (chunk: Buffer) => {
-		process.stdout.write(chunk);
-	});
-
-	child.stderr.on("data", (chunk: Buffer) => {
-		process.stderr.write(chunk);
-	});
-
-	child.on("exit", (code, signal) => {
-		void unlink(LOCAL_PLANTUML_SERVER_CONFIG_PATH).catch((error: unknown) => {
-			if (!isFileNotFoundError(error)) {
-				throw error;
-			}
-		});
-
-		if (signal) {
-			process.kill(process.pid, signal);
-			return;
-		}
-
-		process.exit(code ?? 0);
-	});
-
-	process.on("SIGINT", () => {
-		child.kill("SIGINT");
-	});
-
-	process.on("SIGTERM", () => {
-		child.kill("SIGTERM");
-	});
-}
-
-export async function downloadLocalPlantUmlJar(): Promise<void> {
-	const jarBytes = await downloadPlantUmlJar();
-
-	await mkdir(PLANTUML_DIR, { recursive: true });
-	await writeFile(LOCAL_PLANTUML_JAR_PATH, Buffer.from(jarBytes));
-}
-
-async function loadPlantUmlServerConfig(
-	adapter: DataAdapter,
-	pluginDir?: string,
-): Promise<PlantUmlServerConfig | null> {
-	if (!pluginDir) {
-		return null;
+	if (serverConfig?.pid) {
+		killServer(serverConfig.pid);
 	}
 
-	try {
-		const rawConfig = await adapter.read(`${pluginDir}/${PLANTUML_SERVER_CONFIG_FILE}`);
-		const config: unknown = JSON.parse(rawConfig);
+	const nextServerConfig = await startServer(jarPath);
+	await writeServerConfig(adapter, pluginDir, nextServerConfig);
 
-		if (isPlantUmlServerConfig(config)) {
-			return config;
-		}
-	} catch {
-		// Fall back to the conventional PlantUML pico web port if no runtime config exists.
-	}
-
-	return null;
+	return nextServerConfig.url;
 }
 
-async function removePlantUmlServerConfig(adapter: DataAdapter, pluginDir?: string): Promise<void> {
-	if (!pluginDir) {
-		return;
-	}
-
-	await adapter.remove(`${pluginDir}/${PLANTUML_SERVER_CONFIG_FILE}`).catch((error: unknown) => {
-		if (!isFileNotFoundError(error)) {
-			throw error;
-		}
-	});
-}
-
-async function ensurePlantUmlJar(
-	adapter: DataAdapter,
-	pluginDir: string,
-	options: StartPlantUmlServerOptions,
-): Promise<string> {
-	const plantUmlDir = `${pluginDir}/${PLANTUML_DIR}`;
-	const plantUmlJar = `${plantUmlDir}/${PLANTUML_JAR_FILE}`;
-
-	debugLog("jar: checking directory", { plantUmlDir });
-	if (!await adapter.exists(plantUmlDir)) {
-		debugLog("jar: creating directory", { plantUmlDir });
-		await adapter.mkdir(plantUmlDir);
-	}
-
-	debugLog("jar: checking jar", { plantUmlJar });
-	if (!await adapter.exists(plantUmlJar)) {
-		if (!options.javaDownloadCheck) {
-			debugLog("jar: missing and download check disabled");
-			throw new Error("PlantUML jar is missing and Java download check is disabled.");
-		}
-
-		debugLog("jar: downloading PlantUML jar");
-		const jarBytes = await downloadPlantUmlJar();
-		debugLog("jar: download complete", { bytes: jarBytes.byteLength });
-		await adapter.writeBinary(plantUmlJar, jarBytes);
-		debugLog("jar: wrote jar", { plantUmlJar });
-	}
-
-	return getAdapterFullPath(adapter, plantUmlJar);
-}
-
-async function downloadPlantUmlJar(): Promise<ArrayBuffer> {
-	debugLog("download: start", { url: PLANTUML_JAR_DOWNLOAD_URL });
-	return downloadUrl(PLANTUML_JAR_DOWNLOAD_URL);
-}
-
-async function writePlantUmlServerConfig(
-	adapter: DataAdapter,
-	pluginDir: string,
-	config: PlantUmlServerConfig,
-): Promise<void> {
-	await adapter.write(
-		`${pluginDir}/${PLANTUML_SERVER_CONFIG_FILE}`,
-		`${JSON.stringify(config, null, "\t")}\n`,
-	);
-}
-
-function getAdapterFullPath(adapter: DataAdapter, normalizedPath: string): string {
-	const fileSystemAdapter = adapter as DataAdapter & {
-		getFullPath?: (path: string) => string;
-	};
-
-	if (typeof fileSystemAdapter.getFullPath === "function") {
-		return fileSystemAdapter.getFullPath(normalizedPath);
-	}
-
-	return normalizedPath;
-}
-
-async function downloadUrl(url: string, redirectsRemaining = 5): Promise<ArrayBuffer> {
-	return new Promise((resolve, reject) => {
-		debugLog("download: request", { url, redirectsRemaining });
-		const request = httpsGet(url, (response) => {
-			const statusCode = response.statusCode ?? 0;
-			debugLog("download: response", {
-				url,
-				statusCode,
-				location: response.headers.location,
-			});
-
-			if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
-				response.resume();
-
-				if (redirectsRemaining <= 0) {
-					reject(new Error("Too many redirects while downloading PlantUML jar."));
-					return;
-				}
-
-				void downloadUrl(response.headers.location, redirectsRemaining - 1).then(resolve, reject);
-				return;
-			}
-
-			if (statusCode < 200 || statusCode >= 300) {
-				response.resume();
-				reject(new Error(`Failed to download PlantUML jar: HTTP ${statusCode}`));
-				return;
-			}
-
-			const chunks: Buffer[] = [];
-
-			response.on("data", (chunk: Buffer) => {
-				chunks.push(chunk);
-			});
-
-			response.on("end", () => {
-				const buffer = Buffer.concat(chunks);
-				debugLog("download: response complete", {
-					url,
-					bytes: buffer.byteLength,
-				});
-				resolve(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
-			});
-		});
-
-		request.on("error", (error) => {
-			debugLog("download: request error", error);
-			reject(error);
-		});
-	});
-}
-
-async function waitForPlantUmlServer(serverUrl: string): Promise<void> {
-	const deadline = Date.now() + PLANTUML_READY_TIMEOUT_MS;
-	const healthUrl = createPlantUmlSvgUrl(serverUrl, PLANTUML_READY_SOURCE);
-	let attempts = 0;
-	debugLog("ready: polling", { healthUrl });
-
-	while (Date.now() < deadline) {
-		attempts += 1;
-		if (await isPlantUmlServerReady(healthUrl)) {
-			debugLog("ready: success", { attempts });
-			return;
-		}
-
-		await sleep(PLANTUML_READY_POLL_MS);
-	}
-
-	debugLog("ready: timeout", { attempts });
-	throw new Error("Timed out waiting for PlantUML server to become ready.");
-}
-
-async function isPlantUmlServerReady(url: string): Promise<boolean> {
-	return new Promise((resolve) => {
-		const request = httpGet(url, (response) => {
-			response.resume();
-			debugLog("ready: health response", { statusCode: response.statusCode });
-			resolve(response.statusCode === 200);
-		});
-
-		request.on("error", () => {
-			debugLog("ready: health request error");
-			resolve(false);
-		});
-		request.setTimeout(PLANTUML_READY_POLL_MS, () => {
-			debugLog("ready: health request timeout");
-			request.destroy();
-			resolve(false);
-		});
-	});
-}
-
-async function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => {
-		setTimeout(resolve, ms);
-	});
-}
-
-function normalizeServerUrl(url: string): string {
-	return url.replace(/\/$/, "");
-}
-
-function isPlantUmlServerConfig(value: unknown): value is PlantUmlServerConfig {
-	if (typeof value !== "object" || value === null) {
-		return false;
-	}
-
-	const candidate = value as Record<string, unknown>;
-
-	return typeof candidate.url === "string"
-		&& candidate.url.length > 0
-		&& (candidate.pid === undefined || typeof candidate.pid === "number");
-}
-
-function isFileNotFoundError(error: unknown): boolean {
-	return typeof error === "object"
-		&& error !== null
-		&& "code" in error
-		&& error.code === "ENOENT";
-}
-
-function isProcessNotFoundError(error: unknown): boolean {
-	return typeof error === "object"
-		&& error !== null
-		&& "code" in error
-		&& error.code === "ESRCH";
-}
-
-async function reserveEphemeralPort(
-	createServerFn: typeof createServer,
-): Promise<number> {
-	return new Promise((resolve, reject) => {
-		const server = createServerFn();
+async function startServer(jarPath: string): Promise<PlantUmlServerConfig> {
+	const port = await new Promise<number>((resolve, reject) => {
+		const server = createServer();
 
 		server.on("error", reject);
 		server.listen(0, "127.0.0.1", () => {
@@ -429,17 +61,220 @@ async function reserveEphemeralPort(
 			server.close(() => resolve(address.port));
 		});
 	});
+
+	const url = `http://localhost:${port}`;
+	const child = spawn("java", ["-jar", jarPath, `--http-server:${port}`], {
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+
+	if (child.pid === undefined) {
+		throw new Error("Failed to start PlantUML server.");
+	}
+
+	child.stdout.on("data", (chunk: Buffer) => {
+		process.stdout.write(chunk);
+	});
+
+	child.stderr.on("data", (chunk: Buffer) => {
+		process.stderr.write(chunk);
+	});
+
+	const deadline = Date.now() + PLANTUML_READY_TIMEOUT_MS;
+	while (Date.now() < deadline) {
+		if (await checkServerStatus(url)) {
+			return {
+				url,
+				pid: child.pid,
+			};
+		}
+
+		await new Promise((resolve) => {
+			setTimeout(resolve, PLANTUML_READY_POLL_MS);
+		});
+	}
+
+	child.kill("SIGTERM");
+	throw new Error("Timed out waiting for PlantUML server to become ready.");
 }
 
-if (process.argv.some((argument) => argument.endsWith("plantuml-server.ts"))) {
-	if (process.argv.includes("--download")) {
-		void downloadLocalPlantUmlJar();
-	} else {
-		void serveLocalPlantUmlServer();
+function killServer(pid: number): void {
+	try {
+		process.kill(pid, "SIGTERM");
+	} catch (error) {
+		if (
+			typeof error === "object"
+			&& error !== null
+			&& "code" in error
+			&& error.code === "ESRCH"
+		) {
+			return;
+		}
+
+		throw error;
 	}
 }
 
-function debugLog(message: string, data?: unknown): void {
-	// eslint-disable-next-line no-console
-	console.log(`[kims-plantuml] ${message}`, data ?? "");
+async function checkServerStatus(serverUrl: string): Promise<boolean> {
+	const healthUrl = createPlantUmlImageUrl(
+		{
+			serverUrl,
+			useSmetanaLayout: false,
+		},
+		PLANTUML_READY_SOURCE,
+	);
+
+	return new Promise((resolve) => {
+		const request = httpGet(healthUrl, (response) => {
+			response.resume();
+			resolve(response.statusCode === 200);
+		});
+
+		request.on("error", () => {
+			resolve(false);
+		});
+		request.setTimeout(PLANTUML_READY_POLL_MS, () => {
+			request.destroy();
+			resolve(false);
+		});
+	});
+}
+
+async function downloadLocalPlantUmlJarIfNotExist(jarPath: string): Promise<void> {
+	try {
+		await access(jarPath);
+		return;
+	} catch {
+		// Download below.
+	}
+
+	let currentUrl = PLANTUML_JAR_DOWNLOAD_URL;
+	let redirectsRemaining = 5;
+
+	while (true) {
+		const result = await new Promise<
+			| { kind: "jar"; bytes: ArrayBuffer }
+			| { kind: "redirect"; location: string }
+		>((resolve, reject) => {
+			const request = httpsGet(currentUrl, (response) => {
+				const statusCode = response.statusCode ?? 0;
+				const location = response.headers.location;
+
+				if (statusCode >= 300 && statusCode < 400 && location) {
+					response.resume();
+					resolve({
+						kind: "redirect",
+						location: new URL(location, currentUrl).toString(),
+					});
+					return;
+				}
+
+				if (statusCode < 200 || statusCode >= 300) {
+					response.resume();
+					reject(new Error(`Failed to download PlantUML jar: HTTP ${statusCode}`));
+					return;
+				}
+
+				const chunks: Buffer[] = [];
+				response.on("data", (chunk: Buffer) => {
+					chunks.push(chunk);
+				});
+				response.on("end", () => {
+					const buffer = Buffer.concat(chunks);
+					resolve({
+						kind: "jar",
+						bytes: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+					});
+				});
+			});
+
+			request.on("error", reject);
+		});
+
+		if (result.kind === "jar") {
+			await writeFile(jarPath, Buffer.from(result.bytes));
+			return;
+		}
+
+		if (redirectsRemaining <= 0) {
+			throw new Error("Too many redirects while downloading PlantUML jar.");
+		}
+
+		currentUrl = result.location;
+		redirectsRemaining -= 1;
+	}
+}
+
+async function ensurePlantUmlJar(
+	adapter: DataAdapter,
+	pluginDir: string,
+	javaDownloadCheck: boolean,
+): Promise<string> {
+	const fileSystemAdapter = adapter as DataAdapter & {
+		getFullPath?: (path: string) => string;
+	};
+
+	if (typeof fileSystemAdapter.getFullPath !== "function") {
+		throw new Error("PlantUML server requires a filesystem-backed Obsidian adapter.");
+	}
+
+	const normalizedPlantUmlDir = `${pluginDir}/${PLANTUML_DIR}`;
+	const normalizedJarPath = `${pluginDir}/${PLANTUML_JAR_PATH}`;
+	const plantUmlDir = fileSystemAdapter.getFullPath(normalizedPlantUmlDir);
+	const jarPath = fileSystemAdapter.getFullPath(normalizedJarPath);
+
+	await mkdir(plantUmlDir, { recursive: true });
+
+	if (!javaDownloadCheck) {
+		try {
+			await access(jarPath);
+			return jarPath;
+		} catch {
+			throw new Error("PlantUML jar is missing and Java download check is disabled.");
+		}
+	}
+
+	await downloadLocalPlantUmlJarIfNotExist(jarPath);
+
+	return jarPath;
+}
+
+async function writeServerConfig(
+	adapter: DataAdapter,
+	pluginDir: string,
+	serverConfig: PlantUmlServerConfig,
+): Promise<void> {
+	await adapter.write(
+		`${pluginDir}/${PLANTUML_SERVER_CONFIG_PATH}`,
+		`${JSON.stringify(serverConfig, null, "\t")}\n`,
+	);
+}
+
+async function readServerConfig(
+	adapter: DataAdapter,
+	pluginDir: string,
+): Promise<PlantUmlServerConfig | null> {
+	try {
+		const rawConfig = await adapter.read(`${pluginDir}/${PLANTUML_SERVER_CONFIG_PATH}`);
+		const parsedConfig: unknown = JSON.parse(rawConfig);
+
+		if (typeof parsedConfig !== "object" || parsedConfig === null) {
+			return null;
+		}
+
+		const serverConfig = parsedConfig as Record<string, unknown>;
+		if (typeof serverConfig.url !== "string" || serverConfig.url.length === 0) {
+			return null;
+		}
+
+		if (serverConfig.pid !== undefined && typeof serverConfig.pid !== "number") {
+			return null;
+		}
+
+		return {
+			url: serverConfig.url.replace(/\/$/, ""),
+			pid: serverConfig.pid,
+		};
+	} catch {
+		return null;
+	}
 }
