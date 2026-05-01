@@ -26,7 +26,7 @@ export default class KimsPlantUmlPlugin extends Plugin {
 			this.plantUmlServerUrl = await ensurePlantUmlServer(
 				this.app.vault.adapter,
 				this.manifest.dir,
-				this.settings.javaDownloadCheck,
+				this.settings,
 			);
 			debugLog("onload: PlantUML server ready", {
 				url: this.plantUmlServerUrl,

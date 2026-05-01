@@ -6,13 +6,11 @@ import { createServer } from "net";
 import type { DataAdapter } from "obsidian";
 import {
 	PLANTUML_DIR,
-	PLANTUML_JAR_DOWNLOAD_URL,
 	PLANTUML_JAR_PATH,
-	PLANTUML_READY_POLL_MS,
 	PLANTUML_READY_SOURCE,
-	PLANTUML_READY_TIMEOUT_MS,
 	PLANTUML_SERVER_CONFIG_PATH,
 } from "../const";
+import type { KimsPlantUmlPluginSettings } from "../settings";
 import { createPlantUmlImageUrl } from "./plantuml-client";
 
 interface PlantUmlServerConfig {
@@ -23,30 +21,44 @@ interface PlantUmlServerConfig {
 export async function ensurePlantUmlServer(
 	adapter: DataAdapter,
 	pluginDir: string | undefined,
-	javaDownloadCheck: boolean,
+	settings: Pick<
+		KimsPlantUmlPluginSettings,
+		"javaDownloadCheck"
+		| "plantUmlJarDownloadUrl"
+		| "plantUmlReadyTimeoutMs"
+		| "plantUmlReadyPollMs"
+	>,
 ): Promise<string> {
 	if (!pluginDir) {
 		throw new Error("Cannot ensure PlantUML server without a plugin directory.");
 	}
 
 	const serverConfig = await readServerConfig(adapter, pluginDir);
-	if (serverConfig?.url && await checkServerStatus(serverConfig.url)) {
+	if (serverConfig?.url && await checkServerStatus(serverConfig.url, settings.plantUmlReadyPollMs)) {
 		return serverConfig.url;
 	}
 
-	const jarPath = await ensurePlantUmlJar(adapter, pluginDir, javaDownloadCheck);
+	const jarPath = await ensurePlantUmlJar(adapter, pluginDir, settings);
 
 	if (serverConfig?.pid) {
 		killServer(serverConfig.pid);
 	}
 
-	const nextServerConfig = await startServer(jarPath);
+	const nextServerConfig = await startServer(
+		jarPath,
+		settings.plantUmlReadyTimeoutMs,
+		settings.plantUmlReadyPollMs,
+	);
 	await writeServerConfig(adapter, pluginDir, nextServerConfig);
 
 	return nextServerConfig.url;
 }
 
-async function startServer(jarPath: string): Promise<PlantUmlServerConfig> {
+async function startServer(
+	jarPath: string,
+	readyTimeoutMs: number,
+	readyPollMs: number,
+): Promise<PlantUmlServerConfig> {
 	const port = await new Promise<number>((resolve, reject) => {
 		const server = createServer();
 
@@ -79,9 +91,9 @@ async function startServer(jarPath: string): Promise<PlantUmlServerConfig> {
 		process.stderr.write(chunk);
 	});
 
-	const deadline = Date.now() + PLANTUML_READY_TIMEOUT_MS;
+	const deadline = Date.now() + readyTimeoutMs;
 	while (Date.now() < deadline) {
-		if (await checkServerStatus(url)) {
+		if (await checkServerStatus(url, readyPollMs)) {
 			return {
 				url,
 				pid: child.pid,
@@ -89,7 +101,7 @@ async function startServer(jarPath: string): Promise<PlantUmlServerConfig> {
 		}
 
 		await new Promise((resolve) => {
-			setTimeout(resolve, PLANTUML_READY_POLL_MS);
+			setTimeout(resolve, readyPollMs);
 		});
 	}
 
@@ -114,7 +126,7 @@ function killServer(pid: number): void {
 	}
 }
 
-async function checkServerStatus(serverUrl: string): Promise<boolean> {
+async function checkServerStatus(serverUrl: string, timeoutMs = 100): Promise<boolean> {
 	const healthUrl = createPlantUmlImageUrl(
 		{
 			serverUrl,
@@ -132,14 +144,14 @@ async function checkServerStatus(serverUrl: string): Promise<boolean> {
 		request.on("error", () => {
 			resolve(false);
 		});
-		request.setTimeout(PLANTUML_READY_POLL_MS, () => {
+		request.setTimeout(timeoutMs, () => {
 			request.destroy();
 			resolve(false);
 		});
 	});
 }
 
-async function downloadLocalPlantUmlJarIfNotExist(jarPath: string): Promise<void> {
+async function downloadLocalPlantUmlJarIfNotExist(jarPath: string, downloadUrl: string): Promise<void> {
 	try {
 		await access(jarPath);
 		return;
@@ -147,7 +159,7 @@ async function downloadLocalPlantUmlJarIfNotExist(jarPath: string): Promise<void
 		// Download below.
 	}
 
-	let currentUrl = PLANTUML_JAR_DOWNLOAD_URL;
+	let currentUrl = downloadUrl;
 	let redirectsRemaining = 5;
 
 	while (true) {
@@ -207,7 +219,7 @@ async function downloadLocalPlantUmlJarIfNotExist(jarPath: string): Promise<void
 async function ensurePlantUmlJar(
 	adapter: DataAdapter,
 	pluginDir: string,
-	javaDownloadCheck: boolean,
+	settings: Pick<KimsPlantUmlPluginSettings, "javaDownloadCheck" | "plantUmlJarDownloadUrl">,
 ): Promise<string> {
 	const fileSystemAdapter = adapter as DataAdapter & {
 		getFullPath?: (path: string) => string;
@@ -224,7 +236,7 @@ async function ensurePlantUmlJar(
 
 	await mkdir(plantUmlDir, { recursive: true });
 
-	if (!javaDownloadCheck) {
+	if (!settings.javaDownloadCheck) {
 		try {
 			await access(jarPath);
 			return jarPath;
@@ -233,7 +245,7 @@ async function ensurePlantUmlJar(
 		}
 	}
 
-	await downloadLocalPlantUmlJarIfNotExist(jarPath);
+	await downloadLocalPlantUmlJarIfNotExist(jarPath, settings.plantUmlJarDownloadUrl);
 
 	return jarPath;
 }
